@@ -92,6 +92,30 @@ final class AppDatabase: Sendable {
         try await dbQueue.write { db in try note.insert(db) }
     }
 
+    /// Inserts a note assigning the next `sortIndex` (`MAX + 1`) atomically inside the write, so
+    /// concurrent/rapid creation can't collide and ordering stays stable regardless of which
+    /// notes happen to be open. Returns the stored note (with its assigned `sortIndex`).
+    @discardableResult
+    func insertNewNote(_ note: Note) async throws -> Note {
+        try await dbQueue.write { db in
+            let maxIndex = try Int.fetchOne(db, sql: "SELECT MAX(sortIndex) FROM note") ?? -1
+            var stored = note
+            stored.sortIndex = maxIndex + 1
+            if stored.title.isEmpty {
+                // Default name based on how many lists exist *now*: 0 lists → "List 1"; after you
+                // rename one and add another you get "List 2" (not "List 1" again); restarting with
+                // zero lists naturally starts back at 1. Bump past any clash so names stay unique.
+                let count = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM note") ?? 0
+                let titles = try String.fetchSet(db, sql: "SELECT title FROM note")
+                var n = count + 1
+                while titles.contains("List \(n)") { n += 1 }
+                stored.title = "List \(n)"
+            }
+            try stored.insert(db)
+            return stored
+        }
+    }
+
     /// Updates a note, stamping `updatedAt`.
     func update(_ note: Note) async throws {
         var updated = note
