@@ -29,8 +29,8 @@ for bundle in "$RELEASE_DIR"/*.bundle; do
 done
 
 if [ -n "${VERSION:-}" ]; then
-    echo "▸ Stamping version $VERSION…"
-    /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$APP/Contents/Info.plist"
+    echo "▸ Stamping version ${VERSION}…"
+    /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${VERSION}" "$APP/Contents/Info.plist"
 fi
 
 echo "▸ Code signing (ad-hoc)…"

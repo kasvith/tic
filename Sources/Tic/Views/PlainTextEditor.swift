@@ -178,7 +178,11 @@ extension View {
     /// Aligns this view's `firstTextBaseline` to a sibling `PlainTextEditor`'s first text line.
     /// The editor's `NSView` reports no text baseline, so without this an adjacent checkbox/icon in
     /// an `HStack(alignment: .firstTextBaseline)` hangs below the editor's empty box.
+    @MainActor
     func editorFirstBaseline(font: NSFont = .preferredFont(forTextStyle: .body)) -> some View {
-        alignmentGuide(.firstTextBaseline) { _ in PlainTextEditor.topInset + font.ascender }
+        // Resolve the baseline up front so the (`@Sendable`) alignment-guide closure captures only a
+        // plain CGFloat — not the non-Sendable NSFont or the main-actor `topInset`.
+        let baseline = PlainTextEditor.topInset + font.ascender
+        return alignmentGuide(.firstTextBaseline) { _ in baseline }
     }
 }
