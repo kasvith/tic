@@ -17,8 +17,9 @@ bar click — glance at them, check things off, drag them around. Each note is i
   show-on-all-Spaces per note. Positions and state are remembered across launches.
 - **Multiple lists** — create from the menu bar, **⌘N**, the in-note **+**, or the Dock menu.
   New lists are auto-named *List 1, List 2, …*
-- **Markdown tasks** — inline `**bold**`, `*italic*`, `` `code` ``, `~~strike~~`, links. Tap to
-  edit, drag to reorder with a drop indicator.
+- **Rich tasks** — **subtasks** up to 3 levels (completing a parent completes its children),
+  **multiline** notes (Shift-Return), and inline Markdown (`**bold**`, `*italic*`, `` `code` ``,
+  `~~strike~~`, links). Tap to edit; drag to reorder, or drag right to nest.
 - **Solid or Liquid-Glass** notes — per-note color themes, or a translucent material that shows
   the desktop through it.
 - **Roll-up** — double-click a note's title bar to collapse it to just the header.
@@ -62,6 +63,23 @@ open Package.swift        # edit in Xcode
   opens **Search Lists…**, **New List** (⌘N), and **Launch at Login**.
 - Hover a note to reveal its controls: color, solid/glass, float-on-top, roll-up, **+** new list,
   and close. Click the title to rename; the bottom field adds tasks (Return keeps focus).
+- Hover a task to reveal a **✕** (delete) and, below it, a **＋** line — click it to add a subtask
+  nested under that row. An empty task you don't fill in disappears when you click away.
+
+## Keyboard shortcuts
+
+| Shortcut | Action |
+| --- | --- |
+| **Return** | Finish editing a task / add the typed task |
+| **Shift-Return** (or **⌥ Return**) | New line within the same task |
+| **Shift-Tab** | Make the task a subtask (nest one level deeper) |
+| **⌃ Shift-Tab** | Un-nest a subtask (move it back out) |
+| **⌘N** | New list |
+| **Double-click** the title bar | Roll the note up / down |
+
+You can also **drag a task** to reorder it, or **drag it right** to nest it — the drop indicator
+shows where (and at what level) it will land. The relevant chord (`⇧⏎ line`, `⇧⇥ nest`) shows as a
+tiny keycap hint right in the field while you're editing, so you don't have to memorise this table.
 
 ## Architecture
 
@@ -87,4 +105,4 @@ Icon source art lives in [`Assets/`](Assets) (AppIcon / Flat / MenuBar).
 
 ## License
 
-© 2026 Kasun Vithanage. License TBD.
+Released under the [MIT License](LICENSE). © 2026 Kasun Vithanage.

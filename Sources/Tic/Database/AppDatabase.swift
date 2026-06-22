@@ -77,6 +77,12 @@ final class AppDatabase: Sendable {
             try db.create(index: "task_on_noteId", on: "task", columns: ["noteId"])
         }
 
+        migrator.registerMigration("v2_task_indent_level") { db in
+            try db.alter(table: "task") { t in
+                t.add(column: "indentLevel", .integer).notNull().defaults(to: 0)
+            }
+        }
+
         return migrator
     }
 
@@ -193,27 +199,81 @@ final class AppDatabase: Sendable {
         try await dbQueue.write { db in try task.insert(db) }
     }
 
+    /// Inserts a task assigning the next `sortIndex` (`MAX + 1` for the note) atomically inside the
+    /// write, so a `tasks.count`-based index can't collide with a stale row after deletes leave gaps.
+    func insertTask(_ task: TaskItem) async throws {
+        let snapshot = task
+        try await dbQueue.write { db in
+            let maxIndex = try Int.fetchOne(
+                db, sql: "SELECT MAX(sortIndex) FROM task WHERE noteId = ?", arguments: [snapshot.noteId]
+            ) ?? -1
+            var stored = snapshot
+            stored.sortIndex = maxIndex + 1
+            try stored.insert(db)
+        }
+    }
+
+    /// Inserts `task` somewhere in the middle of a note's list (e.g. a subtask nested under a row),
+    /// then renumbers every row's `sortIndex` to its position in `ordered` — all in one transaction
+    /// so the observation sees a single consistent ordering. `ordered` is the full intended list
+    /// *including* the new task.
+    func insertTask(_ task: TaskItem, reordering ordered: [TaskItem]) async throws {
+        let snapshot = task
+        let order = ordered
+        try await dbQueue.write { db in
+            try snapshot.insert(db)
+            for (index, t) in order.enumerated() {
+                try db.execute(sql: "UPDATE task SET sortIndex = ? WHERE id = ?", arguments: [index, t.id])
+            }
+        }
+    }
+
     func update(_ task: TaskItem) async throws {
         try await dbQueue.write { db in try task.update(db) }
     }
 
-    func deleteTask(id: UUID) async throws {
+    /// One atomic transaction for a structural edit (indent / outdent / delete / drag-reorder), so
+    /// the live observation never sees a transient invalid outline. Touches only the structural
+    /// columns (`sortIndex`, `indentLevel`) plus an optional row delete — never `text` or the
+    /// completion columns, so a structural change can neither clobber a concurrently-edited task body
+    /// nor alter any tick state (completion only ever changes via `updateTaskCompletion`).
+    func applyStructuralUpdate(
+        deleteId: UUID? = nil,
+        reorder ordered: [TaskItem]? = nil,
+        levels: [TaskLevelUpdate] = []
+    ) async throws {
         try await dbQueue.write { db in
-            _ = try TaskItem.filter(TaskItem.Columns.id == id).deleteAll(db)
+            if let deleteId {
+                _ = try TaskItem.filter(TaskItem.Columns.id == deleteId).deleteAll(db)
+            }
+            if let ordered {
+                for (index, task) in ordered.enumerated() where task.sortIndex != index {
+                    try db.execute(sql: "UPDATE task SET sortIndex = ? WHERE id = ?", arguments: [index, task.id])
+                }
+            }
+            for u in levels {
+                try db.execute(sql: "UPDATE task SET indentLevel = ? WHERE id = ?", arguments: [u.level, u.id])
+            }
         }
     }
 
-    /// Persists a new ordering for a note's tasks (called after a drag-to-reorder).
-    /// Writes ONLY the `sortIndex` column so a reorder (which runs off a possibly-stale snapshot
-    /// during a live drag) can never clobber a concurrently-edited `text`/`isDone`.
-    func reorderTasks(_ ordered: [TaskItem]) async throws {
+    /// Targeted write of the `isDone` + `completedAt` columns for the given tasks (a checkbox
+    /// toggle, which cascades through a subtree and bubbles up to ancestors). Writes only the
+    /// completion columns so it never clobbers a concurrently-edited `text` or a reorder.
+    func updateTaskCompletion(_ updates: [TaskCompletionUpdate]) async throws {
+        guard !updates.isEmpty else { return }
         try await dbQueue.write { db in
-            for (index, task) in ordered.enumerated() where task.sortIndex != index {
-                try db.execute(
-                    sql: "UPDATE task SET sortIndex = ? WHERE id = ?",
-                    arguments: [index, task.id]
-                )
-            }
+            try Self.writeCompletion(updates, db)
+        }
+    }
+
+    /// Writes `isDone` + `completedAt` for each update, inside an existing write transaction.
+    private static func writeCompletion(_ updates: [TaskCompletionUpdate], _ db: Database) throws {
+        for u in updates {
+            try db.execute(
+                sql: "UPDATE task SET isDone = ?, completedAt = ? WHERE id = ?",
+                arguments: [u.isDone, u.completedAt, u.id]
+            )
         }
     }
 
@@ -231,30 +291,72 @@ final class AppDatabase: Sendable {
 
     // MARK: - Seeding
 
-    /// On a brand-new database, drops in a friendly welcome note so there's something on screen.
+    /// On a brand-new database, drops in a couple of welcome notes that double as a feature tour —
+    /// one showing subtasks / Markdown / multiline / completion, and a second listing the keyboard
+    /// shortcuts so they're discoverable.
     func seedSampleDataIfEmpty() throws {
         try dbQueue.write { db in
             guard try Note.fetchCount(db) == 0 else { return }
             let now = Date()
-            let note = Note(
-                title: "Today",
-                color: .yellow,
-                material: .solid,
-                frameX: 140, frameY: 220, frameW: 290, frameH: 380,
-                sortIndex: 0
-            )
-            try note.insert(db)
 
-            let samples = [
-                "Welcome to Tic 👋",
-                "Tap the circle to finish a task",
-                "Press Return to add another",
-                "Drag anywhere to move the note"
-            ]
-            for (index, text) in samples.enumerated() {
-                let task = TaskItem(noteId: note.id, text: text, sortIndex: index, createdAt: now)
-                try task.insert(db)
+            func seed(_ note: Note, _ items: [(text: String, level: Int, done: Bool)]) throws {
+                try note.insert(db)
+                for (index, item) in items.enumerated() {
+                    let task = TaskItem(
+                        noteId: note.id, text: item.text, isDone: item.done,
+                        sortIndex: index, indentLevel: item.level,
+                        createdAt: now, completedAt: item.done ? now : nil
+                    )
+                    try task.insert(db)
+                }
             }
+
+            try seed(
+                Note(
+                    title: "Welcome to Tic 👋", color: .yellow, material: .solid,
+                    frameX: 130, frameY: 200, frameW: 300, frameH: 440, sortIndex: 0
+                ),
+                [
+                    ("Tap the circle to finish a task", 0, false),
+                    ("Break big tasks into subtasks", 0, false),
+                    ("Hover a row and click the + below it", 1, false),
+                    ("…or press Shift-Tab while editing", 1, false),
+                    ("Style with *Markdown* — **bold**, `code`, ~~strike~~, [links](https://kasvith.me)", 0, false),
+                    ("Need detail? Press Shift-Return\nfor a new line in the same task", 0, false),
+                    ("Completing a parent completes its subtasks", 0, true),
+                    ("buy milk", 1, true),
+                    ("water the plants", 1, true),
+                    ("⭐️ Star Tic on [GitHub](https://github.com/kasvith/tic)", 0, false),
+                ]
+            )
+
+            try seed(
+                Note(
+                    title: "Shortcuts ⌨️", color: .blue, material: .solid,
+                    frameX: 470, frameY: 260, frameW: 300, frameH: 320, sortIndex: 1
+                ),
+                [
+                    ("**Return** — finish editing, or add a task", 0, false),
+                    ("**Shift-Return** — new line in the same task", 0, false),
+                    ("**Shift-Tab** — make it a subtask", 0, false),
+                    ("**Ctrl-Shift-Tab** — move it back out", 0, false),
+                    ("**Drag** to reorder — or drag right to nest", 0, false),
+                    ("**Double-click** the header to roll up", 0, false),
+                ]
+            )
         }
     }
+}
+
+/// A targeted `indentLevel` change for one task — batched into `applyStructuralUpdate`.
+struct TaskLevelUpdate: Sendable {
+    let id: UUID
+    let level: Int
+}
+
+/// A targeted completion change for one task — batched by `updateTaskCompletion`.
+struct TaskCompletionUpdate: Sendable {
+    let id: UUID
+    let isDone: Bool
+    let completedAt: Date?
 }

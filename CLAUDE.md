@@ -18,7 +18,9 @@ open Package.swift          # opens the package in Xcode for GUI editing / previ
 ./scripts/package.sh        # build release + assemble dist/Tic.app (add --open to launch it)
 ```
 
-- **No test target exists.** "Verification" is a clean `swift build` plus running the app.
+- **Verification** is a clean `swift build`, `swift test` (Swift Testing — `AppDatabaseTests`,
+  `TaskOutlineTests`, `NoteColorTests`), plus running the app. The outline logic lives in pure,
+  testable functions (`TaskOutline`) precisely so it can be covered without a DB or the main actor.
 - `swift run` produces a bare executable (no bundle): fine for dev, but it has no Dock identity
   and **can't register as a login item** (SMAppService needs a real bundle).
 - **Packaging** (`scripts/package.sh` + `Packaging/Info.plist`) assembles a real `dist/Tic.app`
@@ -69,6 +71,13 @@ panels**, and a few responsibilities are deliberately split across the AppKit/Sw
   (`onApplyBehavior`, `onClose`, `onSetCollapsed`).
 - **`AppDatabase`** (`Sendable`) — GRDB `DatabaseQueue` + `DatabaseMigrator`, async CRUD, and
   `ValueObservation` streams.
+- **`TaskOutline`** (pure, no AppKit / no DB) — all the subtask/outline maths over a note's flat
+  `[TaskItem]`: subtree/parent/children queries, the bidirectional completion cascade
+  (`applyingToggle`), indent/outdent, drag-move (`movingSubtree`), level `normalizedLevels`, and the
+  id-matched `indentLevelChanges` diff. Kept separate so it's unit-testable in isolation.
+- **`PlainTextEditor`** (`NSViewRepresentable` over `NSTextView`) — the task / quick-add editor.
+  AppKit, not SwiftUI `TextField`, because that control can't reliably insert newlines or intercept
+  Tab on macOS (see the editing convention below). **`ShortcutHint`** is the small keycap-chip label.
 - **App shell** — `TicApp` (`@main`) provides a `MenuBarExtra`; `AppDelegate`
   (`NSApplicationDelegateAdaptor`) builds the shared `AppDatabase` + `NoteWindowManager` and calls
   `restoreAll()` on launch. The app is a **hybrid**: Dock icon **and** menu bar item.
@@ -77,10 +86,35 @@ panels**, and a few responsibilities are deliberately split across the AppKit/Sw
 
 - **Targeted column writes prevent clobbering.** Window frame, title, appearance, and flags each
   have their own `UPDATE`-one-column method on `AppDatabase` (`updateNoteFrame`, `updateNoteTitle`,
-  …), and `reorderTasks` writes only `sortIndex`. This is load-bearing: e.g. dragging a window
-  (frequent frame saves) must not overwrite a title edit, and a live reorder must not clobber a
-  task's just-edited text. Use a whole-record `update()` only where the controller owns the full
-  current value (task toggle / text commit).
+  …). For tasks, `applyStructuralUpdate` (optional delete + `sortIndex` reorder + `indentLevel`, all
+  in one transaction) and `updateTaskCompletion` (`isDone`/`completedAt`) each touch only their own
+  columns. This is load-bearing: dragging a window (frequent frame saves) must not overwrite a title
+  edit, a reorder must not clobber a just-edited task's text, and a checkbox toggle must not clobber
+  a concurrent text edit. A whole-record `update()` is used only for a task **text** commit (where
+  the controller owns the full current value).
+- **Subtasks are a flat list + an `indentLevel`, not a parent-id tree.** A task's *parent* is
+  implicit — the nearest preceding row with a smaller level (max 3 levels). `TaskOutline` keeps the
+  *outline invariant* (first row level 0; no row more than one level deeper than the row above) via
+  `normalizedLevels` after every structural edit, so an orphaned/jumped level can never render. When
+  persisting level changes, diff **by id** against the current `tasks` (`indentLevelChanges`), not by
+  position — a drag reorders *and* re-nests, so a positional diff would miss the level change (this
+  was a real bug). New subtasks insert mid-list via `insertTask(_:reordering:)`; everything else
+  appends with `insertTask` (atomic `MAX(sortIndex)+1`, so deletes leaving gaps can't collide).
+- **Completion changes only via `toggle`; structural edits preserve ticks.** `toggle` runs the
+  bidirectional cascade (checking a parent checks its whole subtree; finishing the last child
+  auto-completes the parent — `TaskOutline.applyingToggle`). Move / indent / outdent / delete / add
+  **never** touch `isDone` — moving a checked item around leaves every tick exactly as it was.
+- **The editor is AppKit (`PlainTextEditor`/`NSTextView`), not SwiftUI `TextField`.** On macOS that
+  control neither reliably inserts line breaks nor lets us intercept Tab (the key-view loop eats it
+  before `.onKeyPress`). `EditorTextView.keyDown` gives deterministic chords: Return commits,
+  Shift/Option-Return inserts a newline, Shift-Tab nests, Ctrl-Shift-Tab outdents. It forces TextKit
+  1 (`_ = view.layoutManager`) so `usedRect` can size it (TextKit 2's `layoutManager` is nil and
+  multiline would clip), reports height via `sizeThatFits`, and an `editorFirstBaseline()` guide
+  aligns the adjacent checkbox to the editor's first line (an NSView has no SwiftUI text baseline).
+  A blank/whitespace-only task is deleted on commit, so an abandoned new row just disappears.
+- **Rendered Markdown is memoised (`MarkdownRenderCache`).** Parsing inline Markdown per line on
+  every body re-eval made dragging janky (the whole list re-renders each frame); the cache re-parses
+  only when a task's text/colour actually changes.
 - **Glass is `NSVisualEffectView(.behindWindow)`, not `.glassEffect`.** `NoteBackground` renders
   the `.glass` material with a behind-window visual-effect view so it shows the *desktop* through
   it (and adopts the macOS 26 Liquid Glass look automatically). The SwiftUI `.glassEffect` API is

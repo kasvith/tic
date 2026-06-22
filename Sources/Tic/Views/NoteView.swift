@@ -1,9 +1,12 @@
+import AppKit
 import SwiftUI
 
 /// Shared layout constants so the SwiftUI collapsed bar and the AppKit window resize agree.
 enum NoteLayout {
     /// Height of a rolled-up note (shows only its title bar).
     static let collapsedHeight: CGFloat = 44
+    /// Horizontal inset added per nesting level, so subtasks step to the right of their parent.
+    static let indentStep: CGFloat = 20
 }
 
 /// The contents of a single sticky note: a hover-reveal header, a reorderable checklist, and a
@@ -23,13 +26,17 @@ struct NoteView: View {
 
     @State private var titleText: String
     @State private var newTaskText: String = ""
+    @State private var newTaskLevel: Int = 0
     @State private var revealed = false
     @State private var draggingTaskID: TaskItem.ID?
     @State private var dragOffsetY: CGFloat = 0
     @State private var dropIndex: Int?
+    @State private var dropLevel: Int = 0
+    @State private var dragStartLevel: Int = 0
     @State private var rowFrames: [RowFrame] = []
+    @State private var autoEditID: TaskItem.ID?
+    @State private var quickAddFocused = false   // show the quick-add's newline hint only while typing
     @FocusState private var titleFocused: Bool
-    @FocusState private var quickAddFocused: Bool
 
     private static let listSpace = "tic.tasklist"
 
@@ -111,24 +118,35 @@ struct NoteView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
                 ForEach(Array(controller.tasks.enumerated()), id: \.element.id) { index, task in
-                    if isDragging, dropIndex == index { dropIndicator }
+                    if isDragging, dropIndex == index { dropIndicator(level: dropLevel) }
                     row(task)
                 }
-                if isDragging, dropIndex == controller.tasks.count { dropIndicator }
+                if isDragging, dropIndex == controller.tasks.count { dropIndicator(level: dropLevel) }
             }
             .padding(.vertical, 4)
             .coordinateSpace(.named(Self.listSpace))
             .onPreferenceChange(RowFrame.Key.self) { rowFrames = $0 }
         }
         .scrollContentBackground(.hidden)
+        // A click on the empty space (anywhere not a row/field/button) ends editing — and a blank
+        // row vanishes — rather than leaving the caret stuck in a field. Row taps take precedence.
+        .contentShape(Rectangle())
+        .onTapGesture { endEditing() }
         .overlay(alignment: .top) {
             if controller.tasks.isEmpty {
                 Text("No tasks yet — add one below")
                     .font(.callout)
                     .foregroundStyle(theme.secondary)
                     .padding(.top, 12)
+                    .allowsHitTesting(false)
             }
         }
+    }
+
+    /// Resigns the editing text view, committing it (and removing it if blank). Used when the user
+    /// clicks empty space instead of another row/field.
+    private func endEditing() {
+        NSApp.keyWindow?.makeFirstResponder(nil)
     }
 
     private func row(_ task: TaskItem) -> some View {
@@ -136,9 +154,14 @@ struct NoteView: View {
         return TaskRowView(
             task: task,
             theme: theme,
+            autoEdit: task.id == autoEditID,
             onToggle: { controller.toggle(task) },
             onCommit: { controller.commitText(task, $0) },
-            onDelete: { controller.delete(task) }
+            onDelete: { controller.delete(task) },
+            onIndent: { controller.indent(task) },
+            onOutdent: { controller.outdent(task) },
+            onAddSubtask: { autoEditID = controller.addSubtask(under: task) },
+            onAutoEditConsumed: { autoEditID = nil }
         )
         .padding(.horizontal, 12)
         .padding(.vertical, 1)
@@ -150,7 +173,11 @@ struct NoteView: View {
                 )
             }
         )
-        .offset(y: dragging ? dragOffsetY : 0)
+        // Follow the cursor vertically; shift horizontally to preview the target nesting level.
+        .offset(
+            x: dragging ? CGFloat(dropLevel - dragStartLevel) * NoteLayout.indentStep : 0,
+            y: dragging ? dragOffsetY : 0
+        )
         .scaleEffect(dragging ? 1.02 : 1, anchor: .center)
         .opacity(dragging ? 0.95 : 1)
         .shadow(color: .black.opacity(dragging ? 0.18 : 0), radius: dragging ? 5 : 0, y: 2)
@@ -161,15 +188,23 @@ struct NoteView: View {
     private func reorderGesture(for task: TaskItem) -> some Gesture {
         DragGesture(minimumDistance: 6, coordinateSpace: .named(Self.listSpace))
             .onChanged { value in
-                if draggingTaskID != task.id { draggingTaskID = task.id }
+                if draggingTaskID != task.id {
+                    draggingTaskID = task.id
+                    dragStartLevel = task.indentLevel   // re-nest is measured from where it started
+                }
                 dragOffsetY = value.translation.height
-                dropIndex = insertionIndex(at: value.location.y)
+                let index = insertionIndex(at: value.location.y)
+                dropIndex = index
+                dropLevel = targetLevel(forDropIndex: index, dragWidth: value.translation.width)
             }
             .onEnded { _ in
                 let id = draggingTaskID
                 let index = dropIndex
+                let level = dropLevel
                 withAnimation(.snappy(duration: 0.18)) {
-                    if let id, let index { controller.moveTask(id: id, toInsertionIndex: index) }
+                    if let id, let index {
+                        controller.moveTask(id: id, toInsertionIndex: index, targetLevel: level)
+                    }
                     draggingTaskID = nil
                     dragOffsetY = 0
                     dropIndex = nil
@@ -182,42 +217,90 @@ struct NoteView: View {
         rowFrames.filter { $0.midY < y }.count
     }
 
-    private var dropIndicator: some View {
+    /// The nesting level a drop would land at: the dragged row's starting depth plus how far right
+    /// it's been dragged (one step per `indentStep`), clamped to what the row above the drop allows
+    /// (you can't be deeper than one level below your would-be parent, capped at 3 levels).
+    private func targetLevel(forDropIndex index: Int, dragWidth: CGFloat) -> Int {
+        let above = index - 1
+        let maxLevel = (above >= 0 && above < controller.tasks.count)
+            ? min(TaskItem.maxIndentLevel, controller.tasks[above].indentLevel + 1)
+            : 0
+        let desired = dragStartLevel + Int((dragWidth / NoteLayout.indentStep).rounded())
+        return min(max(desired, 0), maxLevel)
+    }
+
+    private func dropIndicator(level: Int) -> some View {
         Capsule()
             .fill(theme.accent)
             .frame(height: 2)
-            .padding(.horizontal, 12)
+            .padding(.leading, 12 + CGFloat(level) * NoteLayout.indentStep)
+            .padding(.trailing, 12)
     }
 
     // MARK: - Quick add
 
     private var quickAdd: some View {
-        HStack(spacing: 8) {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
             Image(systemName: "plus.circle.fill")
                 .font(.system(size: 16))
                 .foregroundStyle(theme.accent.opacity(0.7))
 
-            TextField("", text: $newTaskText)
-                .textFieldStyle(.plain)
-                .foregroundStyle(theme.task)
-                .focused($quickAddFocused)
-                .overlay(alignment: .leading) {
-                    if newTaskText.isEmpty {
-                        Text("Add a task…")
-                            .foregroundStyle(theme.secondary)
-                            .padding(.leading, 2)   // align with the field's text/caret inset
-                            .allowsHitTesting(false)
-                    }
+            // Multiline like the rows: Return adds the task, Shift/Option-Return inserts a newline,
+            // and Shift-Tab / Ctrl-Shift-Tab pre-sets the nesting level of the task being typed.
+            PlainTextEditor(
+                text: $newTaskText,
+                textColor: theme.task,
+                onCommit: { submitNewTask() },
+                onIndent: { adjustNewTaskLevel(by: 1) },
+                onOutdent: { adjustNewTaskLevel(by: -1) },
+                onFocusChange: { focused in
+                    withAnimation(.easeInOut(duration: 0.15)) { quickAddFocused = focused }
                 }
-                .onSubmit {
-                    controller.addTask(newTaskText)
-                    newTaskText = ""
-                    quickAddFocused = true   // keep focus for rapid entry
+            )
+            .overlay(alignment: .topLeading) {
+                if newTaskText.isEmpty {
+                    Text(effectiveNewTaskLevel > 0 ? "Add a subtask…" : "Add a task…")
+                        .foregroundStyle(theme.secondary)
+                        .padding(.top, PlainTextEditor.topInset)   // align with the editor's text inset
+                        .allowsHitTesting(false)
                 }
+            }
+            .editorFirstBaseline()
+
+            // Minimal hint: the newline shortcut, shown only while the quick-add has focus.
+            if quickAddFocused {
+                ShortcutHint(glyphs: "⇧⏎", label: "line", theme: theme)
+                    .transition(.opacity)
+            }
         }
-        .padding(.horizontal, 16)
+        .padding(.leading, 16 + CGFloat(effectiveNewTaskLevel) * NoteLayout.indentStep)
+        .padding(.trailing, 16)
         .padding(.vertical, 12)
         .background(theme.accent.opacity(theme.isGlass ? 0.04 : 0.08))
+        .animation(.snappy(duration: 0.15), value: effectiveNewTaskLevel)
+    }
+
+    /// The pending indent clamped to what the current last row allows — i.e. the level a new task
+    /// will *actually* land at. Computed from the live task list so the field's indent and
+    /// placeholder stay truthful even after the list changes by delete / outdent / reorder.
+    private var effectiveNewTaskLevel: Int {
+        let maxAllowed = controller.tasks.last.map { min(TaskItem.maxIndentLevel, $0.indentLevel + 1) } ?? 0
+        return min(max(newTaskLevel, 0), maxAllowed)
+    }
+
+    /// Adds the pending task (if any) at the effective indent level and clears the field. Called on
+    /// Return and on focus loss (the editor keeps focus after Return, so rapid entry still works).
+    private func submitNewTask() {
+        guard !newTaskText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        controller.addTask(newTaskText, level: effectiveNewTaskLevel)
+        newTaskText = ""
+    }
+
+    /// Nudges the pending new-task level, clamped to what the last existing row allows so the
+    /// quick-add indent can never promise a depth the outline wouldn't accept.
+    private func adjustNewTaskLevel(by delta: Int) {
+        let maxAllowed = controller.tasks.last.map { min(TaskItem.maxIndentLevel, $0.indentLevel + 1) } ?? 0
+        newTaskLevel = min(max(effectiveNewTaskLevel + delta, 0), maxAllowed)
     }
 }
 
