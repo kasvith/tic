@@ -153,6 +153,15 @@ final class EditorTextView: NSTextView {
         invalidateIntrinsicContentSize()
     }
 
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        // The container doesn't track our width on its own (widthTracksTextView is off), so keep it
+        // in sync with the real frame — otherwise text wraps at a stale, narrower width.
+        if let container = textContainer, container.containerSize.width != newSize.width {
+            container.containerSize = NSSize(width: newSize.width, height: CGFloat.greatestFiniteMagnitude)
+        }
+    }
+
     /// Fallback height (used if SwiftUI consults intrinsic size before `sizeThatFits`).
     override var intrinsicContentSize: NSSize {
         let width = bounds.width > 0 ? bounds.width : (textContainer?.containerSize.width ?? 0)

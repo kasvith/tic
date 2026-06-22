@@ -265,6 +265,7 @@ struct NoteView: View {
                         .allowsHitTesting(false)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)   // fill the bar so text wraps at the note width
             .editorFirstBaseline()
 
             // Minimal hint: the newline shortcut, shown only while the quick-add has focus.
