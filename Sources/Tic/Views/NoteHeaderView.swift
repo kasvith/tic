@@ -22,14 +22,23 @@ struct NoteHeaderView: View {
                 .opacity(isRevealed ? 1 : 0)
                 .allowsHitTesting(isRevealed)
 
-            TextField("Title", text: $titleText)
+            TextField("", text: $titleText)
                 .textFieldStyle(.plain)
                 .font(.headline.weight(.semibold))
                 .foregroundStyle(theme.title)
                 .focused($titleFocused)
-                .onSubmit { controller.commitTitle(titleText) }
+                .overlay(alignment: .leading) {
+                    if titleText.isEmpty {
+                        Text("Untitled List")
+                            .font(.headline.weight(.semibold))
+                            .foregroundStyle(theme.secondary)
+                            .padding(.leading, 2)   // align with the field's text/caret inset
+                            .allowsHitTesting(false)
+                    }
+                }
+                .onSubmit { commitTitle() }
                 .onChange(of: titleFocused) { _, focused in
-                    if !focused { controller.commitTitle(titleText) }
+                    if !focused { commitTitle() }
                 }
 
             Rectangle()
@@ -43,10 +52,19 @@ struct NoteHeaderView: View {
         .background(WindowMoveArea { controller.toggleCollapsed() })
     }
 
+    /// Commit the title, normalising the field to the trimmed value so a whitespace-only entry
+    /// becomes empty and the "Untitled List" placeholder reappears.
+    private func commitTitle() {
+        let trimmed = titleText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed != titleText { titleText = trimmed }
+        controller.commitTitle(trimmed)
+    }
+
     // MARK: - Control strip
 
     private var controlStrip: some View {
         HStack(spacing: 10) {
+            newNoteButton
             colorButton
             materialButton
             Spacer(minLength: 0)
@@ -56,6 +74,12 @@ struct NoteHeaderView: View {
         }
         .frame(height: 22)
         .animation(.easeInOut(duration: 0.15), value: isRevealed)
+    }
+
+    private var newNoteButton: some View {
+        iconButton(systemName: "plus", isActive: false, help: "New list") {
+            controller.requestNewNote()
+        }
     }
 
     private var colorButton: some View {
@@ -69,7 +93,7 @@ struct NoteHeaderView: View {
         }
         .buttonStyle(.plain)
         .contentShape(Rectangle())
-        .help("Note color")
+        .help("List color")
         .popover(isPresented: $showColorPopover, arrowEdge: .bottom) { colorPicker }
     }
 
@@ -138,7 +162,7 @@ struct NoteHeaderView: View {
         }
         .buttonStyle(.plain)
         .onHover { hoverClose = $0 }
-        .help("Close note")
+        .help("Close list")
     }
 
     private func iconButton(

@@ -66,7 +66,7 @@ struct NoteView: View {
     private var collapsedBar: some View {
         let remaining = controller.tasks.filter { !$0.isDone }.count
         return HStack(spacing: 8) {
-            Text(note.title.isEmpty ? "Untitled" : note.title)
+            Text(note.title.isEmpty ? "Untitled List" : note.title)
                 .font(.headline.weight(.semibold))
                 .foregroundStyle(theme.title)
                 .lineLimit(1)
@@ -197,10 +197,18 @@ struct NoteView: View {
                 .font(.system(size: 16))
                 .foregroundStyle(theme.accent.opacity(0.7))
 
-            TextField("Add a task…", text: $newTaskText)
+            TextField("", text: $newTaskText)
                 .textFieldStyle(.plain)
                 .foregroundStyle(theme.task)
                 .focused($quickAddFocused)
+                .overlay(alignment: .leading) {
+                    if newTaskText.isEmpty {
+                        Text("Add a task…")
+                            .foregroundStyle(theme.secondary)
+                            .padding(.leading, 2)   // align with the field's text/caret inset
+                            .allowsHitTesting(false)
+                    }
+                }
                 .onSubmit {
                     controller.addTask(newTaskText)
                     newTaskText = ""
