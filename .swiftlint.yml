@@ -1,0 +1,28 @@
+# SwiftLint configuration for Tic. Lenient on purpose — surfaces real smells without failing CI
+# on stylistic warnings (the lint job runs non-strict, so only error-severity violations fail).
+
+excluded:
+  - .build
+  - dist
+  - Assets
+  - Tests
+
+disabled_rules:
+  - todo                 # we leave intentional TODO/markers
+  - trailing_comma
+  - multiple_closures_with_trailing_closure
+
+line_length:
+  warning: 120
+  error: 200
+
+identifier_name:
+  min_length: 1          # allow short locals like i, t, db, id, n
+  max_length: 50
+
+type_name:
+  max_length: 50
+
+function_body_length:
+  warning: 80
+  error: 150
