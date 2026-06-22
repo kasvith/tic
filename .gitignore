@@ -6,5 +6,8 @@
 xcuserdata/
 *.xcuserstate
 
+# Editor
+.vscode/
+
 # macOS
 .DS_Store
