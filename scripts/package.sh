@@ -20,13 +20,18 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
 cp "$RELEASE_DIR/$APP_NAME" "$APP/Contents/MacOS/$APP_NAME"
 cp "Packaging/Info.plist"   "$APP/Contents/Info.plist"
-cp "exports/Tic.icns"       "$APP/Contents/Resources/AppIcon.icns"
+cp "Assets/AppIcon/Tic.icns" "$APP/Contents/Resources/AppIcon.icns"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 
 # SwiftPM resource bundle(s) (menu-bar icon, etc.) so Bundle.module resolves inside the .app.
 for bundle in "$RELEASE_DIR"/*.bundle; do
     [ -e "$bundle" ] && cp -R "$bundle" "$APP/Contents/Resources/"
 done
+
+if [ -n "${VERSION:-}" ]; then
+    echo "▸ Stamping version $VERSION…"
+    /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$APP/Contents/Info.plist"
+fi
 
 echo "▸ Code signing (ad-hoc)…"
 codesign --force --sign - "$APP"

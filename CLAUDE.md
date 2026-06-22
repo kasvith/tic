@@ -22,10 +22,17 @@ open Package.swift          # opens the package in Xcode for GUI editing / previ
 - `swift run` produces a bare executable (no bundle): fine for dev, but it has no Dock identity
   and **can't register as a login item** (SMAppService needs a real bundle).
 - **Packaging** (`scripts/package.sh` + `Packaging/Info.plist`) assembles a real `dist/Tic.app`
-  with bundle id `com.kasvith.tic` and the icon from `exports/Tic.icns` (→ `Resources/AppIcon.icns`,
-  referenced by `CFBundleIconFile`). That's what gives the Dock icon/name and makes Launch-at-Login
-  work. It's ad-hoc signed; a Developer ID + notarization is needed for distribution. For the
-  login item to persist, run the app from a stable location (e.g. move `Tic.app` to /Applications).
+  with bundle id `com.kasvith.tic` and the icon from `Assets/AppIcon/Tic.icns`
+  (→ `Resources/AppIcon.icns`, referenced by `CFBundleIconFile`). That's what gives the Dock
+  icon/name and makes Launch-at-Login work. It's ad-hoc signed; a Developer ID + notarization is
+  needed for distribution. For the login item to persist, run from a stable location (move
+  `Tic.app` to /Applications).
+- **Tests:** `swift test` (Swift Testing; `@testable import Tic` works on the executable target —
+  no separate library). `Assets/` holds source icon art (AppIcon / Flat / MenuBar); the menu-bar
+  glyph is also copied to `Sources/Tic/Resources/MenuBarIcon.png` and bundled via SwiftPM.
+- **CI/Release:** `.github/workflows/` — `ci.yml` (build + test + lint), `changelog.yml`
+  (git-cliff updates `CHANGELOG.md` on main), `release.yml` (push a `v*` tag → builds `Tic.app`,
+  git-cliff release notes, publishes a GitHub Release).
 - To launch headlessly for a no-crash smoke check (the GUI can't be screenshotted from a
   sandbox), run `.build/debug/Tic` in the background and grep its stderr for the
   `[Tic] restored N note panel(s)` log line.
