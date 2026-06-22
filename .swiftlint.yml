@@ -26,3 +26,7 @@ type_name:
 function_body_length:
   warning: 80
   error: 150
+
+cyclomatic_complexity:
+  warning: 15      # NoteColor.color(_:on:) is a clean nested switch (complexity 12)
+  error: 25
