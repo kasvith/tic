@@ -15,11 +15,17 @@ GRDB** for storage. Deployment target is **macOS 14**; the dev toolchain is Swif
 swift build                 # compile (resolves the GRDB SPM dependency); the source of truth
 swift run                   # build + launch the GUI app (long-running; kill it when done)
 open Package.swift          # opens the package in Xcode for GUI editing / previews
+./scripts/package.sh        # build release + assemble dist/Tic.app (add --open to launch it)
 ```
 
 - **No test target exists.** "Verification" is a clean `swift build` plus running the app.
-- `swift build` produces a bare executable, not an `.app` bundle. The app calls
-  `NSApp.setActivationPolicy(.regular)` itself so it still gets a Dock icon + focus.
+- `swift run` produces a bare executable (no bundle): fine for dev, but it has no Dock identity
+  and **can't register as a login item** (SMAppService needs a real bundle).
+- **Packaging** (`scripts/package.sh` + `Packaging/Info.plist`) assembles a real `dist/Tic.app`
+  with bundle id `com.kasvith.tic` and the icon from `exports/Tic.icns` (→ `Resources/AppIcon.icns`,
+  referenced by `CFBundleIconFile`). That's what gives the Dock icon/name and makes Launch-at-Login
+  work. It's ad-hoc signed; a Developer ID + notarization is needed for distribution. For the
+  login item to persist, run the app from a stable location (e.g. move `Tic.app` to /Applications).
 - To launch headlessly for a no-crash smoke check (the GUI can't be screenshotted from a
   sandbox), run `.build/debug/Tic` in the background and grep its stderr for the
   `[Tic] restored N note panel(s)` log line.
