@@ -16,6 +16,7 @@ All notable changes to Tic are documented here.
 ### Bug Fixes
 
 - Release packaging version stamp and editor Sendable warnings
+- Quick-add text wrapped too early on wide notes
 
 ### Documentation
 
