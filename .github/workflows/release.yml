@@ -44,3 +44,24 @@ jobs:
             "dist/Tic-${GITHUB_REF_NAME}.zip" \
             --title "Tic $GITHUB_REF_NAME" \
             --notes-file RELEASE_NOTES.md
+
+      # Refresh the committed CHANGELOG.md — only at release time (not on every push).
+      - name: Switch to main
+        run: git checkout main
+
+      - name: Regenerate CHANGELOG.md
+        uses: orhun/git-cliff-action@v4
+        with:
+          config: cliff.toml
+        env:
+          OUTPUT: CHANGELOG.md
+
+      - name: Commit CHANGELOG.md
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          if ! git diff --staged --quiet; then
+            git commit -m "docs(changelog): update for ${GITHUB_REF_NAME} [skip ci]"
+            git push origin main
+          fi
