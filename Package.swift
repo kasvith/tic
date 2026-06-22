@@ -14,6 +14,9 @@ let package = Package(
             name: "Tic",
             dependencies: [
                 .product(name: "GRDB", package: "GRDB.swift")
+            ],
+            resources: [
+                .process("Resources")
             ]
         )
     ]

@@ -1,5 +1,6 @@
 import AppKit
 import Observation
+import ServiceManagement
 import SwiftUI
 
 /// App-wide coordinator. Bridges the SwiftUI menu bar scene and the AppKit window layer (which
@@ -36,6 +37,7 @@ final class AppModel {
     func bootstrap() async {
         await windows.restoreAll()
         startObservingNotes()
+        applyLaunchAtLogin(launchAtLogin)   // honor the saved preference (effective when packaged)
     }
 
     private func startObservingNotes() {
@@ -113,5 +115,37 @@ final class AppModel {
     /// Closes the Lists palette (Escape / pick a list / its close button).
     func dismissSearch() {
         searchWindow?.orderOut(nil)
+    }
+
+    // MARK: - Launch at login
+
+    private static let launchAtLoginKey = "launchAtLogin"
+
+    /// The user's "open at login" preference (drives the menu checkmark). Stored & @Observable so
+    /// the menu updates the tick live; persisted so it survives relaunch. The actual `SMAppService`
+    /// registration only takes effect for a packaged `.app` (a bare `swift run` executable can't
+    /// be a login item).
+    private(set) var launchAtLogin: Bool = UserDefaults.standard.bool(forKey: AppModel.launchAtLoginKey)
+
+    func setLaunchAtLogin(_ enabled: Bool) {
+        launchAtLogin = enabled   // @Observable → the menu checkmark updates immediately
+        UserDefaults.standard.set(enabled, forKey: Self.launchAtLoginKey)
+        applyLaunchAtLogin(enabled)
+    }
+
+    /// Reconciles the actual login-item registration with the saved preference.
+    private func applyLaunchAtLogin(_ enabled: Bool) {
+        do {
+            switch (enabled, SMAppService.mainApp.status) {
+            case (true, let status) where status != .enabled:
+                try SMAppService.mainApp.register()
+            case (false, .enabled):
+                try SMAppService.mainApp.unregister()
+            default:
+                break
+            }
+        } catch {
+            NSLog("[Tic] Launch at Login \(enabled ? "register" : "unregister") failed: \(error)")
+        }
     }
 }

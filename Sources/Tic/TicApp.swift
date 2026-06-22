@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 @main
 struct TicApp: App {
@@ -7,10 +8,32 @@ struct TicApp: App {
     var body: some Scene {
         // Native .menu style (default): its content is rebuilt each time the menu opens, so it
         // reliably reflects the current lists — unlike .window, which didn't re-render here.
-        MenuBarExtra("Tic", systemImage: "checklist") {
+        MenuBarExtra {
             MenuBarContent()
+        } label: {
+            MenuBarLabel()
         }
     }
+}
+
+/// The status-bar icon: a template-rendered menu-bar glyph (bundled via SPM resources), falling
+/// back to an SF Symbol if the resource can't be found.
+private struct MenuBarLabel: View {
+    var body: some View {
+        if let icon = Self.icon {
+            Image(nsImage: icon).renderingMode(.template)
+        } else {
+            Image(systemName: "checklist")
+        }
+    }
+
+    private static let icon: NSImage? = {
+        guard let url = Bundle.module.url(forResource: "MenuBarIcon", withExtension: "png"),
+              let image = NSImage(contentsOf: url) else { return nil }
+        image.isTemplate = true
+        image.size = NSSize(width: 18, height: 18)
+        return image
+    }()
 }
 
 /// The Tic menu bar menu: New List, recent lists (with a "More Lists" submenu for up to 100),
@@ -48,6 +71,14 @@ private struct MenuBarContent: View {
         Divider()
 
         Button("Search Lists…") { model.openSearch() }
+
+        Toggle("Launch at Login", isOn: Binding(
+            get: { model.launchAtLogin },
+            set: { model.setLaunchAtLogin($0) }
+        ))
+
+        Divider()
+
         Button("Quit Tic") { NSApplication.shared.terminate(nil) }
             .keyboardShortcut("q")
     }
