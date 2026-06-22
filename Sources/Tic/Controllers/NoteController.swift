@@ -62,7 +62,7 @@ final class NoteController {
         let maxLevel = tasks.last.map { min(TaskItem.maxIndentLevel, $0.indentLevel + 1) } ?? 0
         let clamped = min(max(level, 0), maxLevel)
         let task = TaskItem(noteId: noteID, text: text, sortIndex: tasks.count, indentLevel: clamped)
-        tasks = tasks + [task]   // optimistic so the row appears instantly
+        tasks += [task]   // optimistic so the row appears instantly
         Task { [db] in try? await db.insertTask(task) }   // insertTask assigns the real sortIndex (MAX+1)
     }
 

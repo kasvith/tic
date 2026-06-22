@@ -289,8 +289,23 @@ final class AppDatabase: Sendable {
             .values(in: dbQueue)
     }
 
-    // MARK: - Seeding
+}
 
+/// One sample row for the welcome notes — a named type instead of a 3-tuple.
+private struct SeedTask {
+    let text: String
+    let level: Int
+    let done: Bool
+    init(_ text: String, _ level: Int, _ done: Bool) {
+        self.text = text
+        self.level = level
+        self.done = done
+    }
+}
+
+// MARK: - Seeding
+
+extension AppDatabase {
     /// On a brand-new database, drops in a couple of welcome notes that double as a feature tour —
     /// one showing subtasks / Markdown / multiline / completion, and a second listing the keyboard
     /// shortcuts so they're discoverable.
@@ -299,7 +314,7 @@ final class AppDatabase: Sendable {
             guard try Note.fetchCount(db) == 0 else { return }
             let now = Date()
 
-            func seed(_ note: Note, _ items: [(text: String, level: Int, done: Bool)]) throws {
+            func seed(_ note: Note, _ items: [SeedTask]) throws {
                 try note.insert(db)
                 for (index, item) in items.enumerated() {
                     let task = TaskItem(
@@ -317,16 +332,16 @@ final class AppDatabase: Sendable {
                     frameX: 130, frameY: 200, frameW: 300, frameH: 440, sortIndex: 0
                 ),
                 [
-                    ("Tap the circle to finish a task", 0, false),
-                    ("Break big tasks into subtasks", 0, false),
-                    ("Hover a row and click the + below it", 1, false),
-                    ("…or press Shift-Tab while editing", 1, false),
-                    ("Style with *Markdown* — **bold**, `code`, ~~strike~~, [links](https://kasvith.me)", 0, false),
-                    ("Need detail? Press Shift-Return\nfor a new line in the same task", 0, false),
-                    ("Completing a parent completes its subtasks", 0, true),
-                    ("buy milk", 1, true),
-                    ("water the plants", 1, true),
-                    ("⭐️ Star Tic on [GitHub](https://github.com/kasvith/tic)", 0, false),
+                    SeedTask("Tap the circle to finish a task", 0, false),
+                    SeedTask("Break big tasks into subtasks", 0, false),
+                    SeedTask("Hover a row and click the + below it", 1, false),
+                    SeedTask("…or press Shift-Tab while editing", 1, false),
+                    SeedTask("*Markdown* — **bold**, `code`, ~~strike~~, [links](https://kasvith.me)", 0, false),
+                    SeedTask("Need detail? Press Shift-Return\nfor a new line in the same task", 0, false),
+                    SeedTask("Completing a parent completes its subtasks", 0, true),
+                    SeedTask("buy milk", 1, true),
+                    SeedTask("water the plants", 1, true),
+                    SeedTask("⭐️ Star Tic on [GitHub](https://github.com/kasvith/tic)", 0, false),
                 ]
             )
 
@@ -336,12 +351,12 @@ final class AppDatabase: Sendable {
                     frameX: 470, frameY: 260, frameW: 300, frameH: 320, sortIndex: 1
                 ),
                 [
-                    ("**Return** — finish editing, or add a task", 0, false),
-                    ("**Shift-Return** — new line in the same task", 0, false),
-                    ("**Shift-Tab** — make it a subtask", 0, false),
-                    ("**Ctrl-Shift-Tab** — move it back out", 0, false),
-                    ("**Drag** to reorder — or drag right to nest", 0, false),
-                    ("**Double-click** the header to roll up", 0, false),
+                    SeedTask("**Return** — finish editing, or add a task", 0, false),
+                    SeedTask("**Shift-Return** — new line in the same task", 0, false),
+                    SeedTask("**Shift-Tab** — make it a subtask", 0, false),
+                    SeedTask("**Ctrl-Shift-Tab** — move it back out", 0, false),
+                    SeedTask("**Drag** to reorder — or drag right to nest", 0, false),
+                    SeedTask("**Double-click** the header to roll up", 0, false),
                 ]
             )
         }
