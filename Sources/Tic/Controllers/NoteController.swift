@@ -24,6 +24,9 @@ final class NoteController {
     /// Asks the manager to roll the live panel up/down to match `isCollapsed`.
     @ObservationIgnored var onSetCollapsed: ((Bool) -> Void)?
 
+    /// Asks the manager to create a brand-new note (the in-note "+" button).
+    @ObservationIgnored var onNewNote: (() -> Void)?
+
     init(note: Note, database: AppDatabase) {
         self.noteID = note.id
         self.note = note
@@ -169,5 +172,10 @@ final class NoteController {
     /// Hides this note (closes its panel). The note stays in the DB and reopens next launch.
     func requestClose() {
         onClose?()
+    }
+
+    /// Creates a new, separate note.
+    func requestNewNote() {
+        onNewNote?()
     }
 }

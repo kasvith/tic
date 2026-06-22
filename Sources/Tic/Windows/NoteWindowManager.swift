@@ -23,16 +23,18 @@ final class NoteWindowManager: NSObject, NSWindowDelegate {
     func restoreAll() async {
         do {
             let notes = try await appDatabase.allNotes()
-            for note in notes { openNote(note) }
+            for note in notes { openNote(note, makeKey: false) }   // launch: show, don't steal focus
             NSLog("[Tic] restored \(notes.count) note panel(s)")
         } catch {
             NSLog("[Tic] restoreAll failed: \(error)")
         }
     }
 
-    /// Shows the panel for a note, creating it if necessary.
+    /// Shows the panel for a note, creating it if necessary. `makeKey` brings it to key (so an
+    /// interactive open from the menu bar focuses the note and dismisses the .window popover);
+    /// pass `false` for launch restore so we don't yank focus.
     @discardableResult
-    func openNote(_ note: Note) -> NotePanel {
+    func openNote(_ note: Note, makeKey: Bool = true) -> NotePanel {
         if let existing = panels[note.id] {
             existing.makeKeyAndOrderFront(nil)
             return existing
@@ -57,9 +59,16 @@ final class NoteWindowManager: NSObject, NSWindowDelegate {
             guard let self, let panel else { return }
             self.setCollapsed(panel, collapsed: collapsed, animate: true)
         }
+        controller.onNewNote = { [weak self] in
+            Task { await self?.newNote() }
+        }
 
         ensureOnScreen(panel)
-        panel.orderFront(nil)
+        if makeKey {
+            panel.makeKeyAndOrderFront(nil)   // become key → the menu bar popover resigns/dismisses
+        } else {
+            panel.orderFront(nil)
+        }
 
         // A note saved in the rolled-up state opens rolled up (keeping its expanded height).
         if note.isCollapsed {
@@ -69,16 +78,21 @@ final class NoteWindowManager: NSObject, NSWindowDelegate {
     }
 
     /// Creates a fresh note (cascaded so it doesn't sit exactly on top of the last) and opens it.
+    /// The DB assigns a unique, monotonic `sortIndex`; the cascade offset derives from that index
+    /// (not the open-panel count), so placement and ordering stay stable after closes/deletes.
     func newNote() async {
-        let step = Double(panels.count % 8) * 28
-        let note = Note(
-            color: NoteColor.allCases.randomElement() ?? .yellow,
-            frameX: 180 + step,
-            frameY: 320 - step,
-            sortIndex: panels.count
-        )
         do {
-            try await appDatabase.insert(note)
+            let inserted = try await appDatabase.insertNewNote(
+                Note(color: NoteColor.allCases.randomElement() ?? .yellow)
+            )
+            let step = Double(inserted.sortIndex % 8) * 28
+            var note = inserted
+            note.frameX = 180 + step
+            note.frameY = 320 - step
+            try? await appDatabase.updateNoteFrame(
+                id: note.id, x: note.frameX, y: note.frameY,
+                width: note.frameW, height: note.frameH
+            )
             openNote(note)
         } catch {
             NSLog("[Tic] newNote failed: \(error)")
@@ -88,6 +102,17 @@ final class NoteWindowManager: NSObject, NSWindowDelegate {
     /// Brings every open note to the front (menu-bar "Show All").
     func showAll() {
         for panel in panels.values { panel.orderFront(nil) }
+    }
+
+    /// Permanently deletes a note: closes its window if open (existing teardown), then removes
+    /// the row (its tasks go with it via the FK cascade).
+    func deleteNote(_ note: Note) async {
+        do {
+            try await appDatabase.deleteNote(id: note.id)
+            panels[note.id]?.close()   // only tear down once the row is actually gone
+        } catch {
+            NSLog("[Tic] deleteNote failed: \(error)")
+        }
     }
 
     /// Rolls a panel up to just its title bar (or back to its expanded height), keeping the top
