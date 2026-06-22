@@ -45,9 +45,15 @@ jobs:
             --title "Tic $GITHUB_REF_NAME" \
             --notes-file RELEASE_NOTES.md
 
-      # Refresh the committed CHANGELOG.md — only at release time (not on every push).
-      - name: Switch to main
-        run: git checkout main
+  changelog:
+    name: Update CHANGELOG.md
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
 
       - name: Regenerate CHANGELOG.md
         uses: orhun/git-cliff-action@v4
