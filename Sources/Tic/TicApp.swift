@@ -28,12 +28,35 @@ private struct MenuBarLabel: View {
     }
 
     private static let icon: NSImage? = {
-        guard let url = Bundle.module.url(forResource: "MenuBarIcon", withExtension: "png"),
+        guard let url = menuBarIconURL(),
               let image = NSImage(contentsOf: url) else { return nil }
         image.isTemplate = true
         image.size = NSSize(width: 18, height: 18)
         return image
     }()
+
+    private static func menuBarIconURL() -> URL? {
+        let fileManager = FileManager.default
+        let fileName = "MenuBarIcon.png"
+        let resourceBundleName = "Tic_Tic.bundle"
+        let executableDirectory = Bundle.main.executableURL?.deletingLastPathComponent()
+
+        var candidates: [URL] = []
+
+        if let url = Bundle.main.url(forResource: "MenuBarIcon", withExtension: "png") {
+            candidates.append(url)
+        }
+
+        if let resourceURL = Bundle.main.resourceURL {
+            candidates.append(resourceURL.appendingPathComponent(fileName))
+        }
+
+        for baseURL in [Bundle.main.bundleURL, Bundle.main.resourceURL, executableDirectory].compactMap({ $0 }) {
+            candidates.append(baseURL.appendingPathComponent(resourceBundleName).appendingPathComponent(fileName))
+        }
+
+        return candidates.first { fileManager.fileExists(atPath: $0.path) }
+    }
 }
 
 /// The Tic menu bar menu: New List, recent lists (with a "More Lists" submenu for up to 100),

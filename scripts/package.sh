@@ -7,12 +7,12 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 APP_NAME="Tic"
-RELEASE_DIR=".build/release"
 DIST="dist"
 APP="$DIST/$APP_NAME.app"
 
 echo "▸ Building release…"
 swift build -c release
+RELEASE_DIR="$(swift build -c release --show-bin-path)"
 
 echo "▸ Assembling $APP_NAME.app…"
 rm -rf "$APP"
@@ -23,10 +23,25 @@ cp "Packaging/Info.plist"   "$APP/Contents/Info.plist"
 cp "Assets/AppIcon/Tic.icns" "$APP/Contents/Resources/AppIcon.icns"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 
-# SwiftPM resource bundle(s) (menu-bar icon, etc.) so Bundle.module resolves inside the .app.
+bundles_found=0
+
+# SwiftPM resource bundle(s) (menu-bar icon, dependency privacy manifests, etc.).
+# Keep them in Contents/Resources, which is the signed app-bundle resource area.
 for bundle in "$RELEASE_DIR"/*.bundle; do
-    [ -e "$bundle" ] && cp -R "$bundle" "$APP/Contents/Resources/"
+    [ -e "$bundle" ] || continue
+    bundles_found=1
+    cp -R "$bundle" "$APP/Contents/Resources/"
 done
+
+if [ "$bundles_found" -eq 0 ]; then
+    echo "error: no SwiftPM resource bundles found in $RELEASE_DIR" >&2
+    exit 1
+fi
+
+if [ ! -f "$APP/Contents/Resources/Tic_Tic.bundle/MenuBarIcon.png" ]; then
+    echo "error: missing packaged menu bar icon bundle" >&2
+    exit 1
+fi
 
 if [ -n "${VERSION:-}" ]; then
     echo "▸ Stamping version ${VERSION}…"
@@ -35,6 +50,9 @@ fi
 
 echo "▸ Code signing (ad-hoc)…"
 codesign --force --sign - "$APP"
+
+echo "▸ Verifying signature…"
+codesign --verify --strict "$APP"
 
 echo "✓ Built $APP"
 codesign -dv "$APP" 2>&1 | sed 's/^/    /' || true
