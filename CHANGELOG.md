@@ -2,7 +2,7 @@
 
 All notable changes to Tic are documented here.
 
-## [0.1.0] - 2026-06-22
+## [0.1.0] - 2026-06-23
 
 ### Features
 
@@ -17,6 +17,7 @@ All notable changes to Tic are documented here.
 
 - Release packaging version stamp and editor Sendable warnings
 - Quick-add text wrapped too early on wide notes
+- Harden packaged resource loading
 
 ### Documentation
 
