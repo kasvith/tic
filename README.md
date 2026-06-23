@@ -39,7 +39,7 @@ macOS **14 (Sonoma)** or later.
    launch. Clear the quarantine flag:
 
    ```sh
-   xattr -dr com.apple.quarantine /Applications/Tic.app
+   xattr -rc /Applications/Tic.app
    ```
 
    Then open it normally. (Alternatively: right-click `Tic.app` → **Open** → **Open**.)
