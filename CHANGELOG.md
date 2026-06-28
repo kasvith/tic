@@ -2,6 +2,16 @@
 
 All notable changes to Tic are documented here.
 
+## [0.2.0] - 2026-06-28
+
+### Features
+
+- Rapid-add subtasks with an inline section affordance
+
+### Documentation
+
+- Fix quarantine command [skip ci]
+
 ## [0.1.0] - 2026-06-23
 
 ### Features
