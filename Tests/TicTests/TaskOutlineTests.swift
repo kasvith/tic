@@ -250,4 +250,58 @@ struct TaskOutlineTests {
         let reordered = [old[1], old[0]]   // same items, swapped order, same levels
         #expect(TaskOutline.indentLevelChanges(from: old, to: reordered).isEmpty)
     }
+
+    // MARK: - Sibling insertion (rapid-add continuation)
+
+    @Test("sibling insertion lands just below a leaf at the same level")
+    func siblingAfterLeaf() {
+        let tasks = make([("A", 0, false), ("B", 1, false), ("C", 1, false)])
+        let spot = TaskOutline.siblingInsertion(tasks, after: 1)   // after B
+        #expect(spot?.index == 2)                                  // right before C
+        #expect(spot?.level == 1)
+    }
+
+    @Test("sibling insertion lands below the whole subtree, not inside it")
+    func siblingAfterSubtree() {
+        // A has child B with grandchild C; A's next sibling goes after the entire A-block.
+        let tasks = make([("A", 0, false), ("B", 1, false), ("C", 2, false), ("D", 0, false)])
+        let spot = TaskOutline.siblingInsertion(tasks, after: 0)
+        #expect(spot?.index == 3)                                  // before D, past B and C
+        #expect(spot?.level == 0)
+    }
+
+    @Test("sibling insertion inherits the row's current (possibly indented) level")
+    func siblingInheritsLevel() {
+        // A mid-flow Shift-Tab leaves the row at level 2 → its sibling is also level 2.
+        let tasks = make([("A", 0, false), ("B", 1, false), ("C", 2, false)])
+        let spot = TaskOutline.siblingInsertion(tasks, after: 2)
+        #expect(spot?.index == 3)
+        #expect(spot?.level == 2)
+    }
+
+    @Test("sibling insertion is nil for an out-of-range index")
+    func siblingOutOfRange() {
+        let tasks = make([("A", 0, false)])
+        #expect(TaskOutline.siblingInsertion(tasks, after: 5) == nil)
+    }
+
+    @Test("a sibling run builds downward in entry order and stays a valid outline")
+    func siblingRunBuildsDownward() {
+        var tasks = make([("P", 0, false), ("Existing", 1, false)])
+        // The first new subtask under P lands at the bottom of P's subtree (after "Existing").
+        let firstIdx = TaskOutline.subtreeRange(tasks, at: 0).upperBound
+        tasks.insert(TaskItem(noteId: noteId, text: "S1", indentLevel: 1), at: firstIdx)
+        // Each Return adds a sibling just below the row committed before it.
+        var prevText = "S1"
+        for name in ["S2", "S3"] {
+            let prev = tasks.firstIndex { $0.text == prevText }!
+            let spot = TaskOutline.siblingInsertion(tasks, after: prev)!
+            tasks.insert(TaskItem(noteId: noteId, text: name, indentLevel: spot.level), at: spot.index)
+            prevText = name
+        }
+        #expect(tasks.map(\.text) == ["P", "Existing", "S1", "S2", "S3"])
+        #expect(levels(tasks) == [0, 1, 1, 1, 1])
+        // The block is valid by construction — a normalize pass changes nothing.
+        #expect(TaskOutline.normalizedLevels(tasks).map(\.indentLevel) == levels(tasks))
+    }
 }

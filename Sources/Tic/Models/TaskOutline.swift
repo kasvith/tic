@@ -44,6 +44,16 @@ enum TaskOutline {
         return range.dropFirst().filter { tasks[$0].indentLevel == childLevel }
     }
 
+    /// Where the next sibling of the task at `index` should go: directly below that task's whole
+    /// subtree, at the *same* level — so a run of siblings added one after another builds downward in
+    /// entry order. The level comes from the live row, so a mid-flow indent/outdent carries over.
+    /// `nil` for an out-of-range index. A sibling matches a row already within the depth cap, so the
+    /// returned level is always valid.
+    static func siblingInsertion(_ tasks: [TaskItem], after index: Int) -> (index: Int, level: Int)? {
+        guard tasks.indices.contains(index) else { return nil }
+        return (subtreeRange(tasks, at: index).upperBound, tasks[index].indentLevel)
+    }
+
     // MARK: - Completion
 
     /// Toggles the task identified by `id` and returns the updated list.

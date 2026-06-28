@@ -23,6 +23,10 @@ struct PlainTextEditor: NSViewRepresentable {
     /// always-present quick-add field, which should only focus on click).
     var autoFocus: Bool = false
     var onCommit: () -> Void = {}
+    /// Fired *only* on a plain Return — not on Esc or focus loss (both of which call `onCommit`). Lets
+    /// a caller distinguish "the user pressed Return to move on" from "editing ended", e.g. to open
+    /// the next row in a rapid-add flow without a blur/Esc spuriously triggering it.
+    var onSubmit: () -> Void = {}
     var onIndent: () -> Void = {}
     var onOutdent: () -> Void = {}
     /// Fired when the editor gains (`true`) / loses (`false`) first-responder, so the note can show
@@ -43,12 +47,11 @@ struct PlainTextEditor: NSViewRepresentable {
         view.textContainer?.widthTracksTextView = false
         configure(view)
         view.string = text
-        if autoFocus {
-            DispatchQueue.main.async { [weak view] in
-                guard let view, view.window?.firstResponder !== view else { return }
-                view.window?.makeFirstResponder(view)
-            }
-        }
+        // Grab focus once the view is actually in a window (see `EditorTextView.viewDidMoveToWindow`).
+        // The window-entry hook fires the moment the (eagerly-realised, non-lazy) row attaches to the
+        // window — reliable regardless of whether the row is on screen yet. A one-shot
+        // `makeFirstResponder` here would no-op for a row created off-screen.
+        view.autoFocusesOnAppear = autoFocus
         return view
     }
 
@@ -64,6 +67,7 @@ struct PlainTextEditor: NSViewRepresentable {
 
     private func configure(_ view: EditorTextView) {
         view.onCommit = onCommit
+        view.onSubmit = onSubmit
         view.onIndent = onIndent
         view.onOutdent = onOutdent
         view.onFocusChange = onFocusChange
@@ -107,9 +111,30 @@ struct PlainTextEditor: NSViewRepresentable {
 /// needs for a given width so SwiftUI can lay it out.
 final class EditorTextView: NSTextView {
     var onCommit: () -> Void = {}
+    var onSubmit: () -> Void = {}
     var onIndent: () -> Void = {}
     var onOutdent: () -> Void = {}
     var onFocusChange: (Bool) -> Void = { _ in }
+
+    /// When true, the view makes itself first responder the first time it lands in a window.
+    var autoFocusesOnAppear = false
+    private var didAutoFocus = false
+
+    /// Grabs first-responder a single time, once the view is in a window and not already focused.
+    /// Driven by `viewDidMoveToWindow`, which fires the moment the (eagerly-realised) row attaches to
+    /// the window — so it works whether or not the row is on screen yet. Bringing the row into view is
+    /// left to SwiftUI's `ScrollViewReader`: an AppKit `scrollToVisible` is a no-op inside a SwiftUI
+    /// `ScrollView`, which owns the clip view's content offset and reasserts it on the next layout.
+    func focusIfNeeded() {
+        guard autoFocusesOnAppear, !didAutoFocus, let window, window.firstResponder !== self else { return }
+        didAutoFocus = true
+        window.makeFirstResponder(self)
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        focusIfNeeded()
+    }
 
     override func becomeFirstResponder() -> Bool {
         let ok = super.becomeFirstResponder()
@@ -140,6 +165,7 @@ final class EditorTextView: NSTextView {
                 insertText("\n", replacementRange: selectedRange())
             } else {
                 onCommit()
+                onSubmit()   // Return-only; lets callers continue (e.g. open the next add row)
             }
         case Key.escape:
             onCommit()

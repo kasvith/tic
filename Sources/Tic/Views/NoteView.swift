@@ -13,9 +13,16 @@ enum NoteLayout {
 /// quick-add field — or, when rolled up, just a compact title bar. State and persistence are
 /// owned by `NoteController`.
 ///
-/// The task list uses `ScrollView { LazyVStack }` rather than `List` on purpose — a macOS `List`
+/// The task list uses `ScrollView { VStack }` rather than `List` on purpose — a macOS `List`
 /// is NSTableView-backed and draws a dark "emphasized" selection highlight behind a focused row,
 /// which looked like an ugly black box when editing. A plain stack has no selection chrome.
+///
+/// It's a **non-lazy** `VStack` deliberately: each row's inline editor is an AppKit `NSTextView`
+/// that owns its own first responder, and a `LazyVStack` culls/recreates rows as they cross the
+/// viewport. During rapid-add a freshly-inserted row often lands just below the fold — a `LazyVStack`
+/// wouldn't realise it, so it never began editing, never grabbed the keyboard, and couldn't be
+/// scrolled to (no view to target). A `VStack` realises every row, so the new row exists, focuses,
+/// and scrolls into view reliably. Note lists are short, so rendering them all costs nothing.
 ///
 /// Reorder uses a direct `DragGesture` (not the system `.onDrag`, which has a sluggish pickup):
 /// the dragged row follows the cursor immediately, the other rows stay put, a drop-indicator
@@ -34,7 +41,16 @@ struct NoteView: View {
     @State private var dropLevel: Int = 0
     @State private var dragStartLevel: Int = 0
     @State private var rowFrames: [RowFrame] = []
-    @State private var autoEditID: TaskItem.ID?
+    // The subtask currently being filled in the rapid-add flow. It both drives auto-focus (the row
+    // whose id this matches grabs the keyboard) and chains the run: committing it with Return opens
+    // the next sibling at the same level; an empty commit / Esc / blur ends the run. It persists for
+    // the whole run — not a one-shot — so the active row keeps re-asserting editing/focus across
+    // re-renders instead of landing dead after the first render.
+    @State private var addingRowID: TaskItem.ID?
+    // The heading whose group is currently hovered; drives the "Add subtask" affordance shown at the
+    // bottom of that group. Holds the section root (level-0) id, so the affordance stays put as the
+    // pointer moves across the heading, its children, and the affordance itself — it never darts away.
+    @State private var activeSectionID: TaskItem.ID?
     @State private var quickAddFocused = false   // show the quick-add's newline hint only while typing
     @FocusState private var titleFocused: Bool
 
@@ -115,30 +131,58 @@ struct NoteView: View {
     // MARK: - Task list
 
     private var taskList: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0) {
-                ForEach(Array(controller.tasks.enumerated()), id: \.element.id) { index, task in
-                    if isDragging, dropIndex == index { dropIndicator(level: dropLevel) }
-                    row(task)
+        let add = activeAdd
+        return ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(controller.tasks.enumerated()), id: \.element.id) { index, task in
+                        if isDragging, dropIndex == index { dropIndicator(level: dropLevel) }
+                        row(task)
+                        if let add, add.afterIndex == index {
+                            AddSubtaskRow(
+                                theme: theme,
+                                level: add.level,
+                                onActivate: {
+                                    if let parent = controller.tasks.first(where: { $0.id == add.parentID }) {
+                                        startAdding(under: parent)
+                                    }
+                                },
+                                onHoverChanged: { hovering in if hovering { activeSectionID = add.parentID } }
+                            )
+                        }
+                    }
+                    if isDragging, dropIndex == controller.tasks.count { dropIndicator(level: dropLevel) }
                 }
-                if isDragging, dropIndex == controller.tasks.count { dropIndicator(level: dropLevel) }
+                .padding(.top, 4)
+                .padding(.bottom, 12)   // breathing room so the last row never crowds the quick-add bar
+                .coordinateSpace(.named(Self.listSpace))
+                .onPreferenceChange(RowFrame.Key.self) { rowFrames = $0 }
             }
-            .padding(.vertical, 4)
-            .coordinateSpace(.named(Self.listSpace))
-            .onPreferenceChange(RowFrame.Key.self) { rowFrames = $0 }
-        }
-        .scrollContentBackground(.hidden)
-        // A click on the empty space (anywhere not a row/field/button) ends editing — and a blank
-        // row vanishes — rather than leaving the caret stuck in a field. Row taps take precedence.
-        .contentShape(Rectangle())
-        .onTapGesture { endEditing() }
-        .overlay(alignment: .top) {
-            if controller.tasks.isEmpty {
-                Text("No tasks yet — add one below")
-                    .font(.callout)
-                    .foregroundStyle(theme.secondary)
-                    .padding(.top, 12)
-                    .allowsHitTesting(false)
+            .scrollContentBackground(.hidden)
+            // A click on the empty space (anywhere not a row/field/button) ends editing — and a blank
+            // row vanishes — rather than leaving the caret stuck in a field. Row taps take precedence.
+            .contentShape(Rectangle())
+            .onTapGesture { endEditing() }
+            // Leaving the list dismisses the section's add affordance. Moving among a section's rows and
+            // its affordance keeps it (each sets activeSectionID on enter), so it never darts away.
+            .onHover { inside in
+                if !inside { withAnimation(.easeInOut(duration: 0.12)) { activeSectionID = nil } }
+            }
+            // When a rapid-add opens the next row (Return, or the first click), bring it into view so
+            // you can see what you're typing even when the new row would land below the fold. Once it's
+            // realised, the row's window-entry hook (PlainTextEditor) grabs the keyboard.
+            .onChange(of: addingRowID) { _, newID in
+                guard let newID else { return }
+                withAnimation(.easeInOut(duration: 0.2)) { proxy.scrollTo(newID, anchor: .bottom) }
+            }
+            .overlay(alignment: .top) {
+                if controller.tasks.isEmpty {
+                    Text("No tasks yet — add one below")
+                        .font(.callout)
+                        .foregroundStyle(theme.secondary)
+                        .padding(.top, 12)
+                        .allowsHitTesting(false)
+                }
             }
         }
     }
@@ -146,7 +190,50 @@ struct NoteView: View {
     /// Resigns the editing text view, committing it (and removing it if blank). Used when the user
     /// clicks empty space instead of another row/field.
     private func endEditing() {
+        addingRowID = nil   // a click away ends any rapid-add run
         NSApp.keyWindow?.makeFirstResponder(nil)
+    }
+
+    /// Starts a rapid-add run under `parent`: inserts an empty subtask and drops into editing it.
+    /// No-op past the depth cap (`addSubtask` returns nil, so the `+` did nothing).
+    private func startAdding(under parent: TaskItem) {
+        guard let id = controller.addSubtask(under: parent) else { return }
+        addingRowID = id
+    }
+
+    /// Continues a rapid-add run: when the active add row is committed with Return, open a fresh
+    /// sibling just below it at the same level and focus it. An empty row was already removed by the
+    /// commit, so `addSibling` finds nothing and returns nil — which ends the run. Only the active
+    /// add row continues, so editing an existing task and pressing Return never spawns a new row.
+    private func continueAdding(after committed: TaskItem) {
+        guard committed.id == addingRowID else { return }
+        if let next = controller.addSibling(below: committed) {
+            addingRowID = next
+        } else {
+            addingRowID = nil
+        }
+    }
+
+    /// The level-0 heading that owns `task`'s group (itself if it's already top-level). The add
+    /// affordance is scoped to this so it sits at the bottom of the whole section, stable while the
+    /// pointer roams the section's rows.
+    private func sectionRootID(of task: TaskItem) -> TaskItem.ID? {
+        guard var i = controller.tasks.firstIndex(where: { $0.id == task.id }) else { return nil }
+        while i > 0, controller.tasks[i].indentLevel > 0 { i -= 1 }
+        return controller.tasks[i].id
+    }
+
+    /// Where to show the "Add subtask" affordance: after the last row of the hovered heading's group,
+    /// indented one level under the heading. Hidden during a drag or while a rapid-add run is already
+    /// in progress (Return drives that, so the affordance would only be noise).
+    private var activeAdd: (afterIndex: Int, level: Int, parentID: TaskItem.ID)? {
+        guard !isDragging, addingRowID == nil,
+              let sectionID = activeSectionID,
+              let rootIndex = controller.tasks.firstIndex(where: { $0.id == sectionID }) else { return nil }
+        let root = controller.tasks[rootIndex]
+        guard root.indentLevel < TaskItem.maxIndentLevel else { return nil }
+        let afterIndex = TaskOutline.subtreeRange(controller.tasks, at: rootIndex).upperBound - 1
+        return (afterIndex, root.indentLevel + 1, root.id)
     }
 
     private func row(_ task: TaskItem) -> some View {
@@ -154,14 +241,16 @@ struct NoteView: View {
         return TaskRowView(
             task: task,
             theme: theme,
-            autoEdit: task.id == autoEditID,
+            autoEdit: task.id == addingRowID,
             onToggle: { controller.toggle(task) },
             onCommit: { controller.commitText(task, $0) },
             onDelete: { controller.delete(task) },
             onIndent: { controller.indent(task) },
             onOutdent: { controller.outdent(task) },
-            onAddSubtask: { autoEditID = controller.addSubtask(under: task) },
-            onAutoEditConsumed: { autoEditID = nil }
+            onSubmit: { continueAdding(after: task) },
+            onHoverChanged: { hovering in
+                if hovering { withAnimation(.easeInOut(duration: 0.12)) { activeSectionID = sectionRootID(of: task) } }
+            }
         )
         .padding(.horizontal, 12)
         .padding(.vertical, 1)
@@ -316,5 +405,41 @@ private struct RowFrame: Equatable {
         static func reduce(value: inout [RowFrame], nextValue: () -> [RowFrame]) {
             value.append(contentsOf: nextValue())
         }
+    }
+}
+
+/// The "Add subtask" affordance, revealed at the bottom of a hovered heading's group. It's a ghost of
+/// the task a click will create — a hollow plus where the checkbox will sit, at the subtask's indent —
+/// so where the new row lands reads at a glance. A quieter echo of the bottom "Add a task…" bar.
+private struct AddSubtaskRow: View {
+    let theme: NoteTheme
+    let level: Int
+    let onActivate: () -> Void
+    let onHoverChanged: (Bool) -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: onActivate) {
+            HStack(spacing: 8) {
+                Image(systemName: "plus.circle")
+                    .font(.system(size: 16, weight: .regular))
+                    .foregroundStyle(theme.accent.opacity(hovering ? 1 : 0.65))
+                Text("Add subtask")
+                    .font(.callout)
+                    .foregroundStyle(hovering ? theme.task : theme.secondary)
+                Spacer(minLength: 0)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.vertical, 3)
+        .padding(.leading, 12 + CGFloat(level) * NoteLayout.indentStep)
+        .padding(.trailing, 16)
+        .onHover { h in
+            withAnimation(.easeInOut(duration: 0.1)) { hovering = h }
+            onHoverChanged(h)
+        }
+        .help("Add a subtask")
+        .transition(.opacity)
     }
 }

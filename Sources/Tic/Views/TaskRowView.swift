@@ -5,21 +5,26 @@ import SwiftUI
 /// source in a plain, growing text box. While editing, **Return** commits and **Shift-Return**
 /// (or Option-Return) inserts a newline; **Shift-Tab** nests the task one level deeper and
 /// **Ctrl-Shift-Tab** promotes it back out. Editing commits on Return or when focus leaves.
-/// Hover reveals a ✕ delete button and, below the row, a "+ ───" line (indented to the subtask
-/// position) that adds a subtask under this row.
+/// Hover reveals a ✕ delete button; the "Add subtask" affordance lives at the bottom of the hovered
+/// heading's group and is rendered by `NoteView` (this row just reports its hover state up).
 struct TaskRowView: View {
     let task: TaskItem
     let theme: NoteTheme
-    /// Asks the parent to begin editing this row as soon as it appears (used for a freshly-added
-    /// subtask, so the user can type immediately).
+    /// True while this row is the active rapid-add target: it begins editing as soon as it appears —
+    /// and again if the list scrolls and the LazyVStack recreates it — so a freshly-added subtask
+    /// keeps the keyboard and typing flows uninterrupted. The parent clears it when the run ends.
     let autoEdit: Bool
     let onToggle: () -> Void
     let onCommit: (String) -> Void
     let onDelete: () -> Void
     let onIndent: () -> Void
     let onOutdent: () -> Void
-    let onAddSubtask: () -> Void
-    let onAutoEditConsumed: () -> Void
+    /// Fired when the user commits this row with Return (not Esc / focus loss). Used to chain the
+    /// next subtask in the rapid-add flow.
+    let onSubmit: () -> Void
+    /// Reports hover enter/leave up to the list, which uses it to reveal the "Add subtask" affordance
+    /// at the bottom of the hovered heading's group.
+    let onHoverChanged: (Bool) -> Void
 
     @State private var draft: String
     @State private var editing = false
@@ -37,8 +42,8 @@ struct TaskRowView: View {
         onDelete: @escaping () -> Void,
         onIndent: @escaping () -> Void,
         onOutdent: @escaping () -> Void,
-        onAddSubtask: @escaping () -> Void = {},
-        onAutoEditConsumed: @escaping () -> Void = {}
+        onSubmit: @escaping () -> Void = {},
+        onHoverChanged: @escaping (Bool) -> Void = { _ in }
     ) {
         self.task = task
         self.theme = theme
@@ -48,8 +53,8 @@ struct TaskRowView: View {
         self.onDelete = onDelete
         self.onIndent = onIndent
         self.onOutdent = onOutdent
-        self.onAddSubtask = onAddSubtask
-        self.onAutoEditConsumed = onAutoEditConsumed
+        self.onSubmit = onSubmit
+        self.onHoverChanged = onHoverChanged
         _draft = State(initialValue: task.text)
     }
 
@@ -57,19 +62,18 @@ struct TaskRowView: View {
     private var canNestDeeper: Bool { task.indentLevel < TaskItem.maxIndentLevel }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            taskRow
-            if hovering && !editing && canNestDeeper {
-                addSubtaskIndicator
+        taskRow
+            .onHover { isHovering in
+                withAnimation(.easeInOut(duration: 0.12)) { hovering = isHovering }
+                onHoverChanged(isHovering)
             }
-        }
-        .onHover { isHovering in
-            withAnimation(.easeInOut(duration: 0.12)) { hovering = isHovering }
-        }
-        .onAppear { if autoEdit { beginEditing(); onAutoEditConsumed() } }
-        .onChange(of: autoEdit) { _, shouldEdit in
-            if shouldEdit { beginEditing(); onAutoEditConsumed() }
-        }
+            // Begin editing whenever this becomes (or re-becomes, after a scroll recreates the row)
+            // the active add target. `beginEditing` is a no-op once already editing, so a plain
+            // re-render won't disturb an in-progress edit — only a fresh appearance re-triggers it.
+            .onAppear { if autoEdit { beginEditing() } }
+            .onChange(of: autoEdit) { _, shouldEdit in
+                if shouldEdit { beginEditing() }
+            }
     }
 
     private var taskRow: some View {
@@ -105,35 +109,6 @@ struct TaskRowView: View {
         .contentShape(Rectangle())
     }
 
-    /// A hover-revealed "⊕ ───" line, indented to where a subtask would land, that adds one under
-    /// this row. The `+` sits exactly where the new subtask's checkbox will be (echoing the circle
-    /// glyph), with a line that fades out — so the nesting position reads at a glance.
-    private var addSubtaskIndicator: some View {
-        Button(action: onAddSubtask) {
-            HStack(spacing: 8) {
-                Image(systemName: "plus.circle")
-                    .font(.system(size: 15, weight: .regular))
-                    .foregroundStyle(theme.accent)
-                Capsule()
-                    .fill(
-                        LinearGradient(
-                            colors: [theme.accent.opacity(0.5), theme.accent.opacity(0)],
-                            startPoint: .leading, endPoint: .trailing
-                        )
-                    )
-                    .frame(height: 1.5)
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .padding(.leading, CGFloat(task.indentLevel + 1) * NoteLayout.indentStep)
-        .padding(.trailing, 16)
-        .padding(.top, 1)
-        .padding(.bottom, 4)
-        .help("Add subtask")
-        .transition(.opacity)
-    }
-
     @ViewBuilder
     private var content: some View {
         if editing {
@@ -144,6 +119,7 @@ struct TaskRowView: View {
                 textColor: baseColor,
                 autoFocus: true,
                 onCommit: { commit() },
+                onSubmit: onSubmit,
                 onIndent: onIndent,
                 onOutdent: onOutdent
             )
@@ -159,6 +135,7 @@ struct TaskRowView: View {
     }
 
     private func beginEditing() {
+        guard !editing else { return }   // already editing: keep the in-progress draft, don't reset it
         draft = task.text
         editing = true   // PlainTextEditor grabs focus itself (autoFocus).
     }

@@ -74,11 +74,28 @@ final class NoteController {
         guard let parentIndex = tasks.firstIndex(where: { $0.id == parent.id }) else { return nil }
         guard parent.indentLevel < TaskItem.maxIndentLevel else { return nil }
         let insertAt = TaskOutline.subtreeRange(tasks, at: parentIndex).upperBound
-        let task = TaskItem(
-            noteId: noteID, text: "", sortIndex: insertAt, indentLevel: parent.indentLevel + 1
-        )
+        return insertEmptyTask(at: insertAt, level: parent.indentLevel + 1)
+    }
+
+    /// Inserts an empty sibling directly below `sibling` (and its subtree) at the *same* level, and
+    /// returns its id. Drives the rapid-fire add flow: committing one new subtask opens the next one
+    /// at the same depth, so Return keeps you on the same level instead of nesting deeper. Reads the
+    /// sibling's level from the *live* `tasks` so a mid-flow indent/outdent carries over. `nil` if the
+    /// sibling is no longer present (e.g. it was an empty row just removed on commit — ends the flow).
+    @discardableResult
+    func addSibling(below sibling: TaskItem) -> UUID? {
+        guard let index = tasks.firstIndex(where: { $0.id == sibling.id }),
+              let spot = TaskOutline.siblingInsertion(tasks, after: index) else { return nil }
+        return insertEmptyTask(at: spot.index, level: spot.level)
+    }
+
+    /// Inserts an empty task at `index` with `level`, optimistically updating `tasks` and persisting
+    /// the insert + full `sortIndex` renumber in one transaction. Shared by `addSubtask`/`addSibling`.
+    @discardableResult
+    private func insertEmptyTask(at index: Int, level: Int) -> UUID {
+        let task = TaskItem(noteId: noteID, text: "", sortIndex: index, indentLevel: level)
         var ordered = tasks
-        ordered.insert(task, at: insertAt)
+        ordered.insert(task, at: index)
         tasks = ordered   // optimistic
         let snapshot = task
         let orderedSnapshot = ordered
@@ -119,6 +136,12 @@ final class NoteController {
             return
         }
         guard text != task.text else { return }
+        // Optimistically reflect the committed text so the row never flashes blank between leaving
+        // the editor and the observation confirming the write — matters most in the rapid-add flow,
+        // where each Return commits one row while opening the next.
+        if let index = tasks.firstIndex(where: { $0.id == task.id }) {
+            tasks[index].text = text
+        }
         var updated = task
         updated.text = text
         let snapshot = updated

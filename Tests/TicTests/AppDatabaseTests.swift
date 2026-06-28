@@ -157,6 +157,61 @@ struct AppDatabaseTests {
         #expect(after.last?.sortIndex == 3)                          // MAX(2) + 1
     }
 
+    @Test("insertTask(reordering:) inserts mid-list, renumbers sortIndex, and preserves other rows")
+    func insertTaskReordering() async throws {
+        let db = try makeDB()
+        let note = try await db.insertNewNote(Note())
+        // A parent with two children; one child is already done — its tick must survive the insert.
+        try await db.insert(TaskItem(noteId: note.id, text: "P", sortIndex: 0, indentLevel: 0))
+        try await db.insert(TaskItem(noteId: note.id, text: "C1", isDone: true, sortIndex: 1, indentLevel: 1))
+        try await db.insert(TaskItem(noteId: note.id, text: "C2", sortIndex: 2, indentLevel: 1))
+
+        // Insert a new subtask at the bottom of P's subtree (index 3), one level deep.
+        let tasks = try await db.tasks(noteId: note.id)
+        let newTask = TaskItem(noteId: note.id, text: "S1", indentLevel: 1)
+        var ordered = tasks
+        ordered.append(newTask)
+        try await db.insertTask(newTask, reordering: ordered)
+
+        let after = try await db.tasks(noteId: note.id)
+        #expect(after.map(\.text) == ["P", "C1", "C2", "S1"])
+        #expect(after.map(\.sortIndex) == [0, 1, 2, 3])             // contiguous after renumber
+        #expect(after.first { $0.text == "C1" }?.isDone == true)    // tick untouched
+        #expect(after.first { $0.text == "C1" }?.indentLevel == 1)  // level untouched
+        #expect(after.first { $0.text == "S1" }?.indentLevel == 1)
+    }
+
+    @Test("rapid-add inserts siblings below in entry order without disturbing existing rows")
+    func insertSiblingsBuildDownward() async throws {
+        let db = try makeDB()
+        let note = try await db.insertNewNote(Note())
+        try await db.insert(TaskItem(noteId: note.id, text: "P", sortIndex: 0, indentLevel: 0))
+        try await db.insert(TaskItem(noteId: note.id, text: "C", isDone: true, sortIndex: 1, indentLevel: 1))
+
+        // First subtask under P → bottom of P's subtree.
+        var tasks = try await db.tasks(noteId: note.id)
+        let firstIdx = TaskOutline.subtreeRange(tasks, at: 0).upperBound
+        let s1 = TaskItem(noteId: note.id, text: "S1", indentLevel: 1)
+        var ordered = tasks
+        ordered.insert(s1, at: firstIdx)
+        try await db.insertTask(s1, reordering: ordered)
+
+        // Continuation: a sibling just below S1, at the same level.
+        tasks = try await db.tasks(noteId: note.id)
+        let s1Index = try #require(tasks.firstIndex { $0.text == "S1" })
+        let spot = try #require(TaskOutline.siblingInsertion(tasks, after: s1Index))
+        let s2 = TaskItem(noteId: note.id, text: "S2", indentLevel: spot.level)
+        ordered = tasks
+        ordered.insert(s2, at: spot.index)
+        try await db.insertTask(s2, reordering: ordered)
+
+        let after = try await db.tasks(noteId: note.id)
+        #expect(after.map(\.text) == ["P", "C", "S1", "S2"])       // entry order, below existing child
+        #expect(after.map(\.sortIndex) == [0, 1, 2, 3])
+        #expect(after.first { $0.text == "C" }?.isDone == true)    // existing tick untouched
+        #expect(spot.level == 1)                                    // sibling stays at the child's level
+    }
+
     @Test("updateTaskCompletion writes only completion columns, preserving text and indentLevel")
     func targetedCompletionUpdate() async throws {
         let db = try makeDB()
