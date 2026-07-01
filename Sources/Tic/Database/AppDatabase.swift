@@ -83,6 +83,13 @@ final class AppDatabase: Sendable {
             }
         }
 
+        migrator.registerMigration("v3_note_completed_options") { db in
+            try db.alter(table: "note") { t in
+                t.add(column: "hideCompleted", .boolean).notNull().defaults(to: false)
+                t.add(column: "moveCompletedToBottom", .boolean).notNull().defaults(to: false)
+            }
+        }
+
         return migrator
     }
 
@@ -177,6 +184,17 @@ final class AppDatabase: Sendable {
         }
     }
 
+    /// Targeted write of a note's checklist display options (hide completed / move completed to
+    /// bottom). Kept separate from `updateNoteFlags` (window behaviour) so each stays column-targeted.
+    func updateNoteListOptions(id: UUID, hideCompleted: Bool, moveCompletedToBottom: Bool) async throws {
+        try await dbQueue.write { db in
+            try db.execute(
+                sql: "UPDATE note SET hideCompleted = ?, moveCompletedToBottom = ?, updatedAt = ? WHERE id = ?",
+                arguments: [hideCompleted, moveCompletedToBottom, Date(), id]
+            )
+        }
+    }
+
     /// Emits the full ordered list of notes whenever any note changes.
     func observeNotes() -> AsyncValueObservation<[Note]> {
         ValueObservation
@@ -232,19 +250,20 @@ final class AppDatabase: Sendable {
         try await dbQueue.write { db in try task.update(db) }
     }
 
-    /// One atomic transaction for a structural edit (indent / outdent / delete / drag-reorder), so
-    /// the live observation never sees a transient invalid outline. Touches only the structural
-    /// columns (`sortIndex`, `indentLevel`) plus an optional row delete — never `text` or the
-    /// completion columns, so a structural change can neither clobber a concurrently-edited task body
-    /// nor alter any tick state (completion only ever changes via `updateTaskCompletion`).
+    /// One atomic transaction for a structural edit (indent / outdent / delete / drag-reorder /
+    /// clear-completed), so the live observation never sees a transient invalid outline. Touches only
+    /// the structural columns (`sortIndex`, `indentLevel`) plus optional row deletes — never `text` or
+    /// the completion columns, so a structural change can neither clobber a concurrently-edited task
+    /// body nor alter any tick state (completion only ever changes via `updateTaskCompletion`).
+    /// `deleteIds` may hold one row (single delete) or many (clear-completed), removed in one `IN (…)`.
     func applyStructuralUpdate(
-        deleteId: UUID? = nil,
+        deleteIds: [UUID] = [],
         reorder ordered: [TaskItem]? = nil,
         levels: [TaskLevelUpdate] = []
     ) async throws {
         try await dbQueue.write { db in
-            if let deleteId {
-                _ = try TaskItem.filter(TaskItem.Columns.id == deleteId).deleteAll(db)
+            if !deleteIds.isEmpty {
+                _ = try TaskItem.filter(deleteIds.contains(TaskItem.Columns.id)).deleteAll(db)
             }
             if let ordered {
                 for (index, task) in ordered.enumerated() where task.sortIndex != index {

@@ -128,7 +128,7 @@ struct AppDatabaseTests {
 
         // Delete one row and promote the child to level 0 — in one write. Ticks must not change.
         try await db.applyStructuralUpdate(
-            deleteId: doomed.id,
+            deleteIds: [doomed.id],
             levels: [TaskLevelUpdate(id: child.id, level: 0)]
         )
 
@@ -147,7 +147,7 @@ struct AppDatabaseTests {
         }
         // Delete the middle row → surviving sortIndexes are [0, 2], a gap at 1.
         let middle = try #require(try await db.tasks(noteId: note.id).first { $0.text == "t1" })
-        try await db.applyStructuralUpdate(deleteId: middle.id)
+        try await db.applyStructuralUpdate(deleteIds: [middle.id])
 
         try await db.insertTask(TaskItem(noteId: note.id, text: "new"))
 
@@ -266,5 +266,49 @@ struct AppDatabaseTests {
         #expect(fetched.floatOnTop)
         #expect(fetched.showOnAllSpaces)
         #expect(fetched.isCollapsed)
+    }
+
+    @Test("a fresh note defaults both completed-display options to false")
+    func completedOptionsDefaultFalse() async throws {
+        let db = try makeDB()
+        _ = try await db.insertNewNote(Note())
+        let fetched = try #require(try await db.allNotes().first)
+        #expect(fetched.hideCompleted == false)
+        #expect(fetched.moveCompletedToBottom == false)
+    }
+
+    @Test("updateNoteListOptions round-trips both booleans, leaving other fields untouched")
+    func targetedListOptions() async throws {
+        let db = try makeDB()
+        let note = try await db.insertNewNote(Note(title: "Keep", color: .blue))
+        try await db.updateNoteListOptions(id: note.id, hideCompleted: true, moveCompletedToBottom: true)
+
+        let fetched = try #require(try await db.allNotes().first)
+        #expect(fetched.hideCompleted)
+        #expect(fetched.moveCompletedToBottom)
+        #expect(fetched.title == "Keep")     // other columns untouched
+        #expect(fetched.color == .blue)
+    }
+
+    @Test("applyStructuralUpdate deletes many rows at once and renumbers survivors")
+    func batchDelete() async throws {
+        let db = try makeDB()
+        let note = try await db.insertNewNote(Note())
+        // p(done) + its done child c1; d0(done) top-level; keep a0/a1 not-done.
+        try await db.insert(TaskItem(noteId: note.id, text: "a0", sortIndex: 0, indentLevel: 0))
+        try await db.insert(TaskItem(noteId: note.id, text: "p", isDone: true, sortIndex: 1, indentLevel: 0))
+        try await db.insert(TaskItem(noteId: note.id, text: "c1", isDone: true, sortIndex: 2, indentLevel: 1))
+        try await db.insert(TaskItem(noteId: note.id, text: "a1", sortIndex: 3, indentLevel: 0))
+        try await db.insert(TaskItem(noteId: note.id, text: "d0", isDone: true, sortIndex: 4, indentLevel: 0))
+
+        let tasks = try await db.tasks(noteId: note.id)
+        let doneIds = tasks.filter(\.isDone).map(\.id)
+        let survivors = tasks.filter { !$0.isDone }
+        try await db.applyStructuralUpdate(deleteIds: doneIds, reorder: survivors)
+
+        let after = try await db.tasks(noteId: note.id)
+        #expect(after.map(\.text) == ["a0", "a1"])          // all done rows gone
+        #expect(after.map(\.sortIndex) == [0, 1])           // survivors renumbered contiguously
+        #expect(after.allSatisfy { !$0.isDone })
     }
 }

@@ -181,4 +181,46 @@ enum TaskOutline {
             return (task.id, task.indentLevel)
         }
     }
+
+    // MARK: - Display ordering
+
+    /// Drops every completed row for display. Safe because of the completion-cascade invariant — a
+    /// not-done row always has a not-done parent — so a shown parent is always not-done and its hidden
+    /// done children simply vanish. The survivors therefore still form a valid, gap-free outline (the
+    /// first survivor is level 0 and no `+1` jump can appear), so no re-normalisation is needed.
+    static func hidingCompleted(_ tasks: [TaskItem]) -> [TaskItem] {
+        tasks.filter { !$0.isDone }
+    }
+
+    /// Stable, subtree-aware reorder that sinks completed work to the bottom **within every sibling
+    /// group** — top level, and recursively inside each subtree. Not-done subtrees keep their relative
+    /// order and stay on top; done subtrees keep their relative order and sink below. Whole subtrees
+    /// move as blocks, so `indentLevel`s and contiguity are preserved and the outline invariant holds.
+    ///
+    /// Because of the cascade invariant, the recursion only ever reorders *inside not-done subtrees*
+    /// (a done subtree is uniformly done — nothing to sort within it).
+    static func sortedCompletedToBottom(_ tasks: [TaskItem]) -> [TaskItem] {
+        sortingSiblings(tasks)
+    }
+
+    /// Reorders one sibling run (all sharing the run's shallowest level): splits it into subtree
+    /// blocks headed by that level, recurses into each block's children, then stably partitions the
+    /// blocks so not-done heads precede done heads.
+    private static func sortingSiblings(_ block: [TaskItem]) -> [TaskItem] {
+        guard let baseLevel = block.first?.indentLevel else { return block }
+        var subtrees: [[TaskItem]] = []
+        var i = 0
+        while i < block.count {
+            var end = i + 1
+            while end < block.count, block[end].indentLevel > baseLevel { end += 1 }
+            var subtree = Array(block[i..<end])
+            if subtree.count > 1 {
+                subtree = [subtree[0]] + sortingSiblings(Array(subtree[1...]))   // recurse into children
+            }
+            subtrees.append(subtree)
+            i = end
+        }
+        // Stable partition (filter preserves order): not-done heads first, done heads last.
+        return (subtrees.filter { !$0[0].isDone } + subtrees.filter { $0[0].isDone }).flatMap { $0 }
+    }
 }

@@ -24,6 +24,11 @@ struct Note: Identifiable, Equatable, Codable, Sendable {
     var isCollapsed: Bool
     var sortIndex: Int
 
+    // Per-note checklist display options (applied by `NoteController.displayedTasks`, not stored on
+    // the tasks themselves): hide finished rows, and/or keep finished subtrees sunk to the bottom.
+    var hideCompleted: Bool
+    var moveCompletedToBottom: Bool
+
     init(
         id: UUID = UUID(),
         title: String = "",
@@ -38,7 +43,9 @@ struct Note: Identifiable, Equatable, Codable, Sendable {
         floatOnTop: Bool = false,
         showOnAllSpaces: Bool = false,
         isCollapsed: Bool = false,
-        sortIndex: Int = 0
+        sortIndex: Int = 0,
+        hideCompleted: Bool = false,
+        moveCompletedToBottom: Bool = false
     ) {
         self.id = id
         self.title = title
@@ -54,6 +61,8 @@ struct Note: Identifiable, Equatable, Codable, Sendable {
         self.showOnAllSpaces = showOnAllSpaces
         self.isCollapsed = isCollapsed
         self.sortIndex = sortIndex
+        self.hideCompleted = hideCompleted
+        self.moveCompletedToBottom = moveCompletedToBottom
     }
 }
 

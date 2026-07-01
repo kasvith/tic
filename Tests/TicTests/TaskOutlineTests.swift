@@ -304,4 +304,72 @@ struct TaskOutlineTests {
         // The block is valid by construction — a normalize pass changes nothing.
         #expect(TaskOutline.normalizedLevels(tasks).map(\.indentLevel) == levels(tasks))
     }
+
+    // MARK: - Display ordering (hide / move-completed-to-bottom)
+
+    /// Asserts the outline invariant: first row is level 0 and no row is more than one deeper
+    /// than the row above it.
+    private func isValidOutline(_ tasks: [TaskItem]) -> Bool {
+        guard let first = tasks.first else { return true }
+        guard first.indentLevel == 0 else { return false }
+        return zip(tasks, tasks.dropFirst()).allSatisfy { $1.indentLevel <= $0.indentLevel + 1 }
+    }
+
+    @Test("move-to-bottom sinks done top-level subtrees below not-done ones, stably")
+    func sortCompletedTopLevel() {
+        let tasks = make([("A", 0, false), ("B", 0, true), ("C", 0, false), ("D", 0, true)])
+        let out = TaskOutline.sortedCompletedToBottom(tasks)
+        #expect(out.map(\.text) == ["A", "C", "B", "D"])   // A,C keep order on top; B,D keep order below
+        #expect(isValidOutline(out))
+    }
+
+    @Test("move-to-bottom recurses: a done child sinks below a not-done sibling under the same parent")
+    func sortCompletedRecurses() {
+        // P is not-done with a done child c1 and a not-done child c2.
+        let tasks = make([("P", 0, false), ("c1", 1, true), ("c2", 1, false)])
+        let out = TaskOutline.sortedCompletedToBottom(tasks)
+        #expect(out.map(\.text) == ["P", "c2", "c1"])       // c2 rises above the done c1, P stays put
+        #expect(isValidOutline(out))
+    }
+
+    @Test("move-to-bottom keeps a done subtree contiguous and preserves levels + timestamps")
+    func sortCompletedKeepsSubtreeContiguous() {
+        let stamp = Date(timeIntervalSince1970: 2_000)
+        var tasks = make([("A", 0, false), ("B", 0, true), ("B1", 1, true), ("C", 0, false)])
+        tasks[1].completedAt = stamp
+        tasks[2].completedAt = stamp
+        let out = TaskOutline.sortedCompletedToBottom(tasks)
+        #expect(out.map(\.text) == ["A", "C", "B", "B1"])   // the whole done B-block sinks together
+        #expect(levels(out) == [0, 0, 0, 1])                // levels carried verbatim
+        #expect(out.first { $0.text == "B" }?.completedAt == stamp)
+        #expect(out.first { $0.text == "B1" }?.completedAt == stamp)
+        #expect(isValidOutline(out))
+    }
+
+    @Test("move-to-bottom is the identity when nothing is done, and on an empty list")
+    func sortCompletedIdentity() {
+        let tasks = make([("A", 0, false), ("B", 1, false), ("C", 0, false)])
+        #expect(TaskOutline.sortedCompletedToBottom(tasks).map(\.text) == ["A", "B", "C"])
+        #expect(TaskOutline.sortedCompletedToBottom([]).isEmpty)
+    }
+
+    @Test("hide-completed drops done rows and leaves a valid outline")
+    func hideCompleted() {
+        // A done parent B carries a done child B1 (both hidden); a not-done parent P keeps its
+        // not-done child c2 but drops its done child c1.
+        let tasks = make([
+            ("A", 0, false), ("B", 0, true), ("B1", 1, true),
+            ("P", 0, false), ("c1", 1, true), ("c2", 1, false),
+        ])
+        let out = TaskOutline.hidingCompleted(tasks)
+        #expect(out.map(\.text) == ["A", "P", "c2"])
+        #expect(out.allSatisfy { !$0.isDone })
+        #expect(isValidOutline(out))
+    }
+
+    @Test("hide-completed on an all-done list yields an empty outline")
+    func hideCompletedAllDone() {
+        let tasks = make([("A", 0, true), ("B", 1, true)])
+        #expect(TaskOutline.hidingCompleted(tasks).isEmpty)
+    }
 }

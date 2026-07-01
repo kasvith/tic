@@ -131,11 +131,14 @@ struct NoteView: View {
     // MARK: - Task list
 
     private var taskList: some View {
+        // Everything below reasons in *displayed* space: the source-of-truth `tasks` with the note's
+        // completed-display options applied. Equal to `controller.tasks` when both options are off.
+        let display = controller.displayedTasks
         let add = activeAdd
         return ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    ForEach(Array(controller.tasks.enumerated()), id: \.element.id) { index, task in
+                    ForEach(Array(display.enumerated()), id: \.element.id) { index, task in
                         if isDragging, dropIndex == index { dropIndicator(level: dropLevel) }
                         row(task)
                         if let add, add.afterIndex == index {
@@ -151,7 +154,7 @@ struct NoteView: View {
                             )
                         }
                     }
-                    if isDragging, dropIndex == controller.tasks.count { dropIndicator(level: dropLevel) }
+                    if isDragging, dropIndex == display.count { dropIndicator(level: dropLevel) }
                 }
                 .padding(.top, 4)
                 .padding(.bottom, 12)   // breathing room so the last row never crowds the quick-add bar
@@ -176,8 +179,8 @@ struct NoteView: View {
                 withAnimation(.easeInOut(duration: 0.2)) { proxy.scrollTo(newID, anchor: .bottom) }
             }
             .overlay(alignment: .top) {
-                if controller.tasks.isEmpty {
-                    Text("No tasks yet — add one below")
+                if display.isEmpty {
+                    Text(controller.tasks.isEmpty ? "No tasks yet — add one below" : "All done — completed tasks hidden")
                         .font(.callout)
                         .foregroundStyle(theme.secondary)
                         .padding(.top, 12)
@@ -218,21 +221,22 @@ struct NoteView: View {
     /// affordance is scoped to this so it sits at the bottom of the whole section, stable while the
     /// pointer roams the section's rows.
     private func sectionRootID(of task: TaskItem) -> TaskItem.ID? {
-        guard var i = controller.tasks.firstIndex(where: { $0.id == task.id }) else { return nil }
-        while i > 0, controller.tasks[i].indentLevel > 0 { i -= 1 }
-        return controller.tasks[i].id
+        let display = controller.displayedTasks
+        guard var i = display.firstIndex(where: { $0.id == task.id }) else { return nil }
+        while i > 0, display[i].indentLevel > 0 { i -= 1 }
+        return display[i].id
     }
 
     /// Where to show the "Add subtask" affordance: after the last row of the hovered heading's group,
     /// indented one level under the heading. Hidden during a drag or while a rapid-add run is already
     /// in progress (Return drives that, so the affordance would only be noise).
     private var activeAdd: (afterIndex: Int, level: Int, parentID: TaskItem.ID)? {
-        guard !isDragging, addingRowID == nil,
-              let sectionID = activeSectionID,
-              let rootIndex = controller.tasks.firstIndex(where: { $0.id == sectionID }) else { return nil }
-        let root = controller.tasks[rootIndex]
+        guard !isDragging, addingRowID == nil, let sectionID = activeSectionID else { return nil }
+        let display = controller.displayedTasks
+        guard let rootIndex = display.firstIndex(where: { $0.id == sectionID }) else { return nil }
+        let root = display[rootIndex]
         guard root.indentLevel < TaskItem.maxIndentLevel else { return nil }
-        let afterIndex = TaskOutline.subtreeRange(controller.tasks, at: rootIndex).upperBound - 1
+        let afterIndex = TaskOutline.subtreeRange(display, at: rootIndex).upperBound - 1
         return (afterIndex, root.indentLevel + 1, root.id)
     }
 
@@ -271,7 +275,9 @@ struct NoteView: View {
         .opacity(dragging ? 0.95 : 1)
         .shadow(color: .black.opacity(dragging ? 0.18 : 0), radius: dragging ? 5 : 0, y: 2)
         .zIndex(dragging ? 1 : 0)
-        .gesture(reorderGesture(for: task))
+        // Reorder is paused while completed are auto-sorted to the bottom (it would fight the sort);
+        // `.subviews` disables only this drag gesture, leaving the checkbox / inline editor clickable.
+        .gesture(reorderGesture(for: task), including: controller.isReorderable ? .all : .subviews)
     }
 
     private func reorderGesture(for task: TaskItem) -> some Gesture {
@@ -292,7 +298,12 @@ struct NoteView: View {
                 let level = dropLevel
                 withAnimation(.snappy(duration: 0.18)) {
                     if let id, let index {
-                        controller.moveTask(id: id, toInsertionIndex: index, targetLevel: level)
+                        // `index` is in displayed space; map it back to a true `tasks` insertion index.
+                        controller.moveTask(
+                            id: id,
+                            toInsertionIndex: controller.trueInsertionIndex(forDisplayedIndex: index),
+                            targetLevel: level
+                        )
                     }
                     draggingTaskID = nil
                     dragOffsetY = 0
@@ -310,9 +321,10 @@ struct NoteView: View {
     /// it's been dragged (one step per `indentStep`), clamped to what the row above the drop allows
     /// (you can't be deeper than one level below your would-be parent, capped at 3 levels).
     private func targetLevel(forDropIndex index: Int, dragWidth: CGFloat) -> Int {
+        let display = controller.displayedTasks
         let above = index - 1
-        let maxLevel = (above >= 0 && above < controller.tasks.count)
-            ? min(TaskItem.maxIndentLevel, controller.tasks[above].indentLevel + 1)
+        let maxLevel = (above >= 0 && above < display.count)
+            ? min(TaskItem.maxIndentLevel, display[above].indentLevel + 1)
             : 0
         let desired = dragStartLevel + Int((dragWidth / NoteLayout.indentStep).rounded())
         return min(max(desired, 0), maxLevel)

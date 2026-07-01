@@ -88,3 +88,120 @@ struct NoteControllerTests {
         #expect(c.tasks.first { $0.text == "New" }?.isDone == false)
     }
 }
+
+/// The completed-display options (hide / move-to-bottom / clear), driven through the controller's
+/// optimistic `tasks` and `note` exactly as `NoteView`/`NoteHeaderView` drive them.
+@MainActor
+@Suite("NoteController completed options")
+struct NoteControllerCompletedOptionsTests {
+    private func makeController() async throws -> NoteController {
+        let db = try AppDatabase.makeInMemory()
+        let note = Note()
+        try await db.insert(note)
+        return NoteController(note: note, database: db)
+    }
+
+    /// Builds `[A, B, C]` at level 0 with B marked done.
+    private func threeWithMiddleDone(_ c: NoteController) throws {
+        c.addTask("A")
+        c.addTask("B")
+        c.addTask("C")
+        c.toggle(try #require(c.tasks.first { $0.text == "B" }))
+    }
+
+    @Test("displayedTasks reflects each option and both together; equals tasks when both are off")
+    func displayedTasksReflectsFlags() async throws {
+        let c = try await makeController()
+        try threeWithMiddleDone(c)
+
+        #expect(c.displayedTasks.map(\.text) == ["A", "B", "C"])   // both off → identity
+
+        c.toggleHideCompleted()
+        #expect(c.displayedTasks.map(\.text) == ["A", "C"])        // done B hidden
+
+        c.toggleHideCompleted()                                    // back on-screen
+        c.toggleMoveCompletedToBottom()
+        #expect(c.displayedTasks.map(\.text) == ["A", "C", "B"])   // done B sinks
+
+        c.toggleHideCompleted()                                    // both on → hide dominates
+        #expect(c.displayedTasks.map(\.text) == ["A", "C"])
+    }
+
+    @Test("isReorderable follows move-to-bottom only; hiding leaves it reorderable")
+    func isReorderableFollowsMove() async throws {
+        let c = try await makeController()
+        #expect(c.isReorderable)                 // default
+        c.toggleHideCompleted()
+        #expect(c.isReorderable)                 // hiding still allows reorder (remap)
+        c.toggleMoveCompletedToBottom()
+        #expect(!c.isReorderable)                // auto-sort pauses reorder
+        c.toggleMoveCompletedToBottom()
+        #expect(c.isReorderable)
+    }
+
+    @Test("trueInsertionIndex is the identity by default and remaps around hidden rows")
+    func trueInsertionIndexRemap() async throws {
+        let c = try await makeController()
+        try threeWithMiddleDone(c)               // tasks: A(nd) B(done) C(nd)
+
+        // Identity while nothing is transformed.
+        #expect(c.trueInsertionIndex(forDisplayedIndex: 0) == 0)
+        #expect(c.trueInsertionIndex(forDisplayedIndex: 2) == 2)
+
+        c.toggleHideCompleted()                  // displayed: [A, C]
+        #expect(c.trueInsertionIndex(forDisplayedIndex: 0) == 0)   // before A
+        #expect(c.trueInsertionIndex(forDisplayedIndex: 1) == 2)   // before C (skips hidden B)
+        #expect(c.trueInsertionIndex(forDisplayedIndex: 2) == 3)   // end → after last visible subtree
+    }
+
+    @Test("completedCount tracks done tasks regardless of display options")
+    func completedCountTracksDone() async throws {
+        let c = try await makeController()
+        #expect(c.completedCount == 0)
+        try threeWithMiddleDone(c)
+        #expect(c.completedCount == 1)
+        c.toggleHideCompleted()                  // hiding doesn't change the count
+        #expect(c.completedCount == 1)
+    }
+
+    @Test("clearCompleted removes done rows, keeps survivor order/levels/ticks, and renumbers")
+    func clearCompletedRemovesDone() async throws {
+        let c = try await makeController()
+        c.addTask("P")
+        c.addTask("c1", level: 1)
+        c.addTask("c2", level: 1)
+        c.toggle(try #require(c.tasks.first { $0.text == "c1" }))   // c1 done; P stays open (c2 open)
+        #expect(c.completedCount == 1)
+
+        c.clearCompleted()
+        #expect(c.tasks.map(\.text) == ["P", "c2"])                // done c1 gone, order preserved
+        #expect(c.tasks.map(\.indentLevel) == [0, 1])              // survivor levels renormalised
+        #expect(c.tasks.allSatisfy { !$0.isDone })
+        // The contiguous sortIndex renumber is a DB concern (fire-and-forget here) and is verified in
+        // AppDatabaseTests.batchDelete; the optimistic array keeps the survivors' original indices.
+    }
+
+    @Test("clearCompleted is a no-op when nothing is completed")
+    func clearCompletedNoop() async throws {
+        let c = try await makeController()
+        c.addTask("A")
+        c.addTask("B")
+        c.clearCompleted()
+        #expect(c.tasks.map(\.text) == ["A", "B"])
+    }
+
+    @Test("the two toggles flip their note flags independently")
+    func togglesFlipFlags() async throws {
+        let c = try await makeController()
+        #expect(!c.note.hideCompleted)
+        #expect(!c.note.moveCompletedToBottom)
+
+        c.toggleHideCompleted()
+        #expect(c.note.hideCompleted)
+        #expect(!c.note.moveCompletedToBottom)
+
+        c.toggleMoveCompletedToBottom()
+        #expect(c.note.hideCompleted)
+        #expect(c.note.moveCompletedToBottom)
+    }
+}

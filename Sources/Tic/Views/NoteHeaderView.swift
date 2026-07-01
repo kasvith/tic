@@ -12,6 +12,8 @@ struct NoteHeaderView: View {
     @FocusState.Binding var titleFocused: Bool
 
     @State private var showColorPopover = false
+    @State private var showCompletedPopover = false
+    @State private var showClearConfirm = false
     @State private var hoverClose = false
 
     private var note: Note { controller.note }
@@ -67,6 +69,8 @@ struct NoteHeaderView: View {
             newNoteButton
             colorButton
             materialButton
+            completedButton
+            if controller.completedCount > 0 { clearButton }
             Spacer(minLength: 0)
             collapseButton
             floatButton
@@ -74,6 +78,15 @@ struct NoteHeaderView: View {
         }
         .frame(height: 22)
         .animation(.easeInOut(duration: 0.15), value: isRevealed)
+        .animation(.easeInOut(duration: 0.15), value: controller.completedCount > 0)
+        .confirmationDialog(
+            "Delete \(controller.completedCount) completed task\(controller.completedCount == 1 ? "" : "s")? This can't be undone.",
+            isPresented: $showClearConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) { controller.clearCompleted() }
+            Button("Cancel", role: .cancel) {}
+        }
     }
 
     private var newNoteButton: some View {
@@ -130,6 +143,50 @@ struct NoteHeaderView: View {
             help: isGlass ? "Switch to solid" : "Switch to glass"
         ) {
             controller.toggleMaterial()
+        }
+    }
+
+    private var completedButton: some View {
+        let isActive = note.hideCompleted || note.moveCompletedToBottom
+        return Button {
+            showCompletedPopover.toggle()
+        } label: {
+            Image(systemName: "line.3.horizontal.decrease.circle")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(isActive ? theme.accent : theme.secondary)
+                .frame(width: 22, height: 22)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Completed task options")
+        .popover(isPresented: $showCompletedPopover, arrowEdge: .bottom) { completedOptionsMenu }
+    }
+
+    /// The two per-note display toggles. `note` is `private(set)`, so each `Toggle` writes through the
+    /// controller's toggle method (the binding's incoming value is ignored — the method flips + persists).
+    private var completedOptionsMenu: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Toggle("Hide completed", isOn: Binding(
+                get: { note.hideCompleted },
+                set: { _ in controller.toggleHideCompleted() }
+            ))
+            Toggle("Move completed to bottom", isOn: Binding(
+                get: { note.moveCompletedToBottom },
+                set: { _ in controller.toggleMoveCompletedToBottom() }
+            ))
+        }
+        .toggleStyle(.switch)
+        .controlSize(.small)
+        .font(.callout)
+        .tint(theme.accent)
+        .padding(14)
+        .frame(width: 240)
+    }
+
+    private var clearButton: some View {
+        // A "tidy up" wand rather than a trash can — this clears finished items, it isn't a delete.
+        iconButton(systemName: "wand.and.sparkles", isActive: false, help: "Clean up completed tasks") {
+            showClearConfirm = true
         }
     }
 
