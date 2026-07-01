@@ -154,7 +154,18 @@ final class NoteController {
     func delete(_ task: TaskItem) {
         let id = task.id
         let survivors = tasks.filter { $0.id != id }
-        applyStructural(TaskOutline.normalizedLevels(survivors), deleteId: id)
+        applyStructural(TaskOutline.normalizedLevels(survivors), deleteIds: [id])
+    }
+
+    /// Removes every completed task in one batch and renumbers/renormalises the survivors. A survivor
+    /// can never be orphaned — the cascade invariant means a not-done row's ancestors are also not-done
+    /// (so they survive too) — but we normalise for safety. Irreversible (no undo); the view guards
+    /// this behind a confirmation. Tick state of survivors is untouched (structural edit only).
+    func clearCompleted() {
+        let doneIds = tasks.filter(\.isDone).map(\.id)
+        guard !doneIds.isEmpty else { return }
+        let survivors = TaskOutline.normalizedLevels(tasks.filter { !$0.isDone })
+        applyStructural(survivors, deleteIds: doneIds, reorder: true)
     }
 
     /// Moves the task with `id` — and its whole subtree — so it lands at `insertionIndex` (an index
@@ -178,15 +189,15 @@ final class NoteController {
     /// not by position — so a reorder that also re-nests still persists every changed level. The UI
     /// updates optimistically and the (optional) delete / reorder + level changes are written in one
     /// transaction so the observation only ever sees a valid outline.
-    private func applyStructural(_ updated: [TaskItem], deleteId: UUID? = nil, reorder: Bool = false) {
+    private func applyStructural(_ updated: [TaskItem], deleteIds: [UUID] = [], reorder: Bool = false) {
         let levels = TaskOutline.indentLevelChanges(from: tasks, to: updated)
             .map { TaskLevelUpdate(id: $0.id, level: $0.level) }
         // For a pure indent/outdent (no delete, no reorder) bail when nothing actually changed.
-        guard deleteId != nil || reorder || !levels.isEmpty else { return }
+        guard !deleteIds.isEmpty || reorder || !levels.isEmpty else { return }
         tasks = updated   // optimistic; the observation confirms
         let ordered = reorder ? updated : nil
         Task { [db] in
-            try? await db.applyStructuralUpdate(deleteId: deleteId, reorder: ordered, levels: levels)
+            try? await db.applyStructuralUpdate(deleteIds: deleteIds, reorder: ordered, levels: levels)
         }
     }
 
@@ -261,6 +272,59 @@ final class NoteController {
                 showOnAllSpaces: showOnAllSpaces, isCollapsed: collapsed
             )
         }
+    }
+
+    // MARK: - List display options
+
+    /// Hides completed rows from the checklist (they stay in the DB; toggle to show them again).
+    func toggleHideCompleted() {
+        note.hideCompleted.toggle()
+        persistListOptions()
+    }
+
+    /// Keeps completed subtrees sunk to the bottom of each sibling group. While on, drag-reorder is
+    /// paused (the auto-sort would override a manual drop) — see `isReorderable`.
+    func toggleMoveCompletedToBottom() {
+        note.moveCompletedToBottom.toggle()
+        persistListOptions()
+    }
+
+    private func persistListOptions() {
+        let id = noteID
+        let hide = note.hideCompleted
+        let move = note.moveCompletedToBottom
+        Task { [db] in try? await db.updateNoteListOptions(id: id, hideCompleted: hide, moveCompletedToBottom: move) }
+    }
+
+    /// The task list as the view should render it: the source-of-truth `tasks` with the per-note
+    /// display options applied. Identical (same order, same elements) to `tasks` when both options are
+    /// off, so the default checklist and its drag-reorder path are untouched.
+    var displayedTasks: [TaskItem] {
+        var display = tasks
+        if note.moveCompletedToBottom { display = TaskOutline.sortedCompletedToBottom(display) }
+        if note.hideCompleted { display = TaskOutline.hidingCompleted(display) }
+        return display
+    }
+
+    /// Drag-reorder is coherent only when it isn't fighting an automatic sort. Hiding still allows it
+    /// (the drop index is remapped via `trueInsertionIndex`); move-to-bottom pauses it.
+    var isReorderable: Bool { !note.moveCompletedToBottom }
+
+    /// How many tasks are currently completed (drives the clear button's visibility/label).
+    var completedCount: Int { tasks.lazy.filter(\.isDone).count }
+
+    /// Translates a drop index expressed in **displayed** coordinates into an insertion index into the
+    /// true `tasks` array (what `moveTask` expects). It's the identity when `displayedTasks == tasks`;
+    /// in hide-only mode (a filtered subsequence) it anchors on the visible neighbour's id so a drop
+    /// lands in the right place even with hidden done rows interleaved.
+    func trueInsertionIndex(forDisplayedIndex displayedIndex: Int) -> Int {
+        let display = displayedTasks
+        if displayedIndex >= display.count {
+            guard let last = display.last,
+                  let lastTrue = tasks.firstIndex(where: { $0.id == last.id }) else { return tasks.count }
+            return TaskOutline.subtreeRange(tasks, at: lastTrue).upperBound   // after the last visible subtree
+        }
+        return tasks.firstIndex(where: { $0.id == display[displayedIndex].id }) ?? tasks.count
     }
 
     // MARK: - Lifecycle
