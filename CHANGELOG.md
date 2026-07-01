@@ -2,6 +2,12 @@
 
 All notable changes to Tic are documented here.
 
+## [0.3.0] - 2026-07-01
+
+### Features
+
+- Per-note completed-task options (hide, sink to bottom, clean up)
+
 ## [0.2.0] - 2026-06-28
 
 ### Features
