@@ -2,6 +2,16 @@
 
 All notable changes to Tic are documented here.
 
+## [0.8.0] - 2026-10-26
+
+### Features
+
+- *(reorder)* Ghost placeholder drag with parent indicator and grip
+
+### Bug Fixes
+
+- *(editor)* Leave Return to the input method during IME composition
+
 ## [0.7.1] - 2026-09-18
 
 ### Bug Fixes
