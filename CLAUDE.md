@@ -167,9 +167,21 @@ panels**, and a few responsibilities are deliberately split across the AppKit/Sw
   (an `NSViewRepresentable` calling `window.performDrag`) is placed behind the header / collapsed
   bar. This is what lets task rows be dragged to **reorder** without moving the window.
 - **Reorder uses a direct `DragGesture`, not system `.onDrag`.** System drag has a sluggish
-  pickup; the gesture is immediate. Rows publish their midpoints via a `PreferenceKey`, the drop
-  indicator shows the landing spot, and the move commits once on release. This is safe on macOS
-  because scrolling is the wheel/trackpad, so click-drag doesn't fight the `ScrollView`.
+  pickup; the gesture is immediate. The dragged block (row + subtree) lifts into an overlay
+  (`LiftedRow`) and its head row turns into a ghost `DropPlaceholder` at the drop slot and level;
+  the receiving parent is tinted with an elbow (`DropThread`) into it. The dragged row stays
+  **mounted** (invisible, one line tall) under the placeholder: it took the mouse-down, and removing
+  it makes SwiftUI silently stop the drag's events (no end, no cancel — a stuck drag).
+  `ReorderDragTests` hosts a real `NoteView` in a `NotePanel` and drives it with synthetic events via
+  `window.sendEvent` (not `NSApp.postEvent` + a `nextEvent` pump, which stalls the main actor for
+  later tests; hit-test first — a press on a text field starts a tracking loop that never returns).
+  Rows publish their frames via a `PreferenceKey`; the
+  slot counts rest-row midpoints *with the gap open* (so it only moves once a neighbour is fully
+  crossed — no flicker). Per-frame pointer state lives in the `@Observable` `ReorderDrag`, read
+  only by `LiftedRow`, so the list re-renders on slot/level changes, not every frame. Drop rules
+  are pure in `TaskOutline` (`dropLevels`: never adopt the row below; `levelSteps`: ~70% of an
+  indent step to re-nest). Safe on macOS because scrolling is the wheel/trackpad, so click-drag
+  doesn't fight the `ScrollView`.
 - **Roll-up keeps the top edge fixed.** `NoteWindowManager.setCollapsed` resizes the panel to
   `NoteLayout.collapsedHeight`, remembers the real height in `expandedHeights`, and
   `scheduleFrameSave` persists the *expanded* height/origin while collapsed so nothing is lost.

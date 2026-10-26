@@ -5,7 +5,8 @@ import SwiftUI
 /// source in a plain, growing text box. While editing, **Return** commits and **Shift-Return**
 /// (or Option-Return) inserts a newline; **Shift-Tab** nests the task one level deeper and
 /// **Ctrl-Shift-Tab** promotes it back out. Editing commits on Return or when focus leaves.
-/// Hover reveals a ✕ delete button; the "Add subtask" affordance lives at the bottom of the hovered
+/// Hover reveals a ✕ delete button and, when the list is reorderable, a drag grip left of the checkbox;
+/// the "Add subtask" affordance lives at the bottom of the hovered
 /// heading's group and is rendered by `NoteView` (this row just reports its hover state up).
 struct TaskRowView: View {
     let task: TaskItem
@@ -14,6 +15,8 @@ struct TaskRowView: View {
     /// and again if the list scrolls and the LazyVStack recreates it — so a freshly-added subtask
     /// keeps the keyboard and typing flows uninterrupted. The parent clears it when the run ends.
     let autoEdit: Bool
+    /// Shows the drag grip on hover (off while the list auto-sorts and reordering is paused).
+    let canReorder: Bool
     let onToggle: () -> Void
     let onCommit: (String) -> Void
     let onDelete: () -> Void
@@ -39,11 +42,14 @@ struct TaskRowView: View {
 
     /// Where the text column starts — the 16pt checkbox glyph plus the row's spacing — so the image lines up.
     private static let textInset: CGFloat = 24
+    /// How far the hover region reaches left of the checkbox, into the gutter where the grip sits.
+    private static let gripGutter: CGFloat = 9
 
     init(
         task: TaskItem,
         theme: NoteTheme,
         autoEdit: Bool = false,
+        canReorder: Bool = false,
         onToggle: @escaping () -> Void,
         onCommit: @escaping (String) -> Void,
         onDelete: @escaping () -> Void,
@@ -57,6 +63,7 @@ struct TaskRowView: View {
         self.task = task
         self.theme = theme
         self.autoEdit = autoEdit
+        self.canReorder = canReorder
         self.onToggle = onToggle
         self.onCommit = onCommit
         self.onDelete = onDelete
@@ -77,10 +84,19 @@ struct TaskRowView: View {
             // Hover is tracked on the text line only. Over an image it would reveal the ✕ and the section's
             // "Add subtask" row, and either shifts the layout under a pointer resting on a tall picture.
             taskRow
+                // Reach into the gutter so pointing at the grip doesn't end the hover that shows it.
+                .padding(.leading, Self.gripGutter)
+                .overlay(alignment: .topLeading) {
+                    if canReorder && hovering && !editing {
+                        GripDots().fill(theme.secondary.opacity(0.55)).frame(width: 6, height: 10).padding(.top, 4)
+                    }
+                }
+                .contentShape(Rectangle())
                 .onHover { isHovering in
                     withAnimation(.easeInOut(duration: 0.12)) { hovering = isHovering }
                     onHoverChanged(isHovering)
                 }
+                .padding(.leading, -Self.gripGutter)
             // Below the text line's HStack, so the ✕ / nest hint appearing can't narrow a fill-width image —
             // which would shorten the row under the pointer and make the hover flicker on and off.
             image
@@ -175,6 +191,19 @@ struct TaskRowView: View {
         guard editing else { return }
         editing = false
         onCommit(draft)
+    }
+}
+
+/// The six-dot drag grip: left of a task's checkbox on hover, and on the lifted row mid-drag.
+struct GripDots: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        for column in 0..<2 {
+            for row in 0..<3 {
+                path.addEllipse(in: CGRect(x: CGFloat(column) * 3.6, y: CGFloat(row) * 3.8, width: 2.2, height: 2.2))
+            }
+        }
+        return path
     }
 }
 
