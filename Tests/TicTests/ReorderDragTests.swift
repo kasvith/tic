@@ -11,8 +11,8 @@ import Testing
 /// the drag's events — it never ended or cancelled, so the lifted row and placeholder stayed put.
 ///
 /// Events go straight to the window (not `NSApp.postEvent` + a hand-pumped `nextEvent` loop, which
-/// left the main actor unserviced for the next test), and each mouse-down is first hit-tested onto
-/// SwiftUI content: a press on a text field would start an AppKit tracking loop that never returns.
+/// left the main actor unserviced for the next test), and each mouse-down is first hit-tested: a press on
+/// a text field or the header's move area would start an AppKit tracking loop that never returns.
 @MainActor
 @Suite("Reorder drag (hosted NoteView)", .serialized)
 struct ReorderDragTests {
@@ -68,8 +68,10 @@ struct ReorderDragTests {
     /// Presses on the first row and nudges it so the drag starts; returns where the pointer now is.
     private func pickUpFirstRow(_ h: Harness) throws -> NSPoint {
         let start = NSPoint(x: 60, y: h.top - 80)
+        // Never press AppKit text or the header's move area: they run tracking loops that would hang.
+        // (SwiftUI's own container class here differs by macOS version, so it can't be matched by name.)
         let hit = try #require(h.panel.contentView?.hitTest(start))
-        try #require(String(describing: type(of: hit)).contains("PlatformGroupContainer"), "not on a task row")
+        try #require(!(hit is NSText || hit is NSControl || hit is WindowMoveArea.MoveView), "pressed \(hit)")
         send(.leftMouseDown, start, to: h)
         let nudged = NSPoint(x: start.x, y: start.y - 6)
         send(.leftMouseDragged, nudged, to: h)
@@ -80,6 +82,7 @@ struct ReorderDragTests {
     @Test("a drag drops where the placeholder is")
     func dropsAtPlaceholder() async throws {
         let h = try await makeHarness()
+        defer { h.panel.orderOut(nil) }
         let at = try pickUpFirstRow(h)
         drag(h, from: at, to: NSPoint(x: at.x, y: at.y - 46))
         send(.leftMouseUp, NSPoint(x: at.x, y: at.y - 46), to: h)
@@ -91,6 +94,7 @@ struct ReorderDragTests {
     @Test("pausing mid-drag doesn't kill the drag (the stuck-drag regression)")
     func survivesPause() async throws {
         let h = try await makeHarness()
+        defer { h.panel.orderOut(nil) }
         let at = try pickUpFirstRow(h)
         pump(0.6)   // well past the pickup animation, which used to remove the pressed view
         let before = h.drag.location
@@ -105,6 +109,7 @@ struct ReorderDragTests {
     @Test("leaving the note and coming back keeps tracking and still drops", arguments: ["right", "left", "below", "above"])
     func leavesAndReturns(_ side: String) async throws {
         let h = try await makeHarness()
+        defer { h.panel.orderOut(nil) }
         let at = try pickUpFirstRow(h)
         let away = switch side {
         case "right": NSPoint(x: 420, y: at.y - 30)
@@ -126,6 +131,7 @@ struct ReorderDragTests {
     @Test("releasing outside the note never leaves the drag stuck")
     func releaseOutside() async throws {
         let h = try await makeHarness()
+        defer { h.panel.orderOut(nil) }
         let at = try pickUpFirstRow(h)
         let outside = NSPoint(x: 420, y: -60)
         drag(h, from: at, to: outside)
@@ -138,6 +144,7 @@ struct ReorderDragTests {
     @Test("dragging a parent carries its subtree")
     func carriesSubtree() async throws {
         let h = try await makeHarness([("A", 0), ("A1", 1), ("B", 0), ("C", 0), ("D", 0)])
+        defer { h.panel.orderOut(nil) }
         let at = try pickUpFirstRow(h)
         #expect(h.drag.block.map(\.text) == ["A", "A1"])
         drag(h, from: at, to: NSPoint(x: at.x, y: at.y - 40))
@@ -154,6 +161,7 @@ struct ReorderDragTests {
     @Test("moving within one slot doesn't rebuild the list every frame")
     func noPerFrameListRebuild() async throws {
         let h = try await makeHarness()
+        defer { h.panel.orderOut(nil) }
         let at = try pickUpFirstRow(h)
         pump(0.3)
         NoteView.taskListRenders = 0
