@@ -174,6 +174,9 @@ final class EditorTextView: NSTextView {
     }
 
     override func keyDown(with event: NSEvent) {
+        // Mid-IME composition (e.g. Pinyin) every key belongs to the input method: Return commits
+        // the raw letters, Esc cancels, so none of our chords may fire.
+        if hasMarkedText() { return super.keyDown(with: event) }
         let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         switch event.keyCode {
         case Key.tab where mods.contains(.shift):

@@ -7,6 +7,9 @@ enum NoteLayout {
     static let collapsedHeight: CGFloat = 44
     /// Horizontal inset added per nesting level, so subtasks step to the right of their parent.
     static let indentStep: CGFloat = 20
+    /// Horizontal inset of task rows from the note's edges — room for the drag grip and the drop
+    /// highlight left of a top-level checkbox. Matches the title and the quick-add bar.
+    static let rowInset: CGFloat = 16
 }
 
 /// The contents of a single sticky note: a hover-reveal header, a reorderable checklist, and a
@@ -25,19 +28,19 @@ enum NoteLayout {
 /// and scrolls into view reliably. Note lists are short, so rendering them all costs nothing.
 ///
 /// Reorder uses a direct `DragGesture` (not the system `.onDrag`, which has a sluggish pickup):
-/// the dragged row follows the cursor immediately, the other rows stay put, a drop-indicator
-/// line shows the landing spot, and the move commits once on release. (On macOS scrolling is the
+/// the dragged row (with its subtree) lifts and follows the cursor, the rest part around a ghost
+/// placeholder at the exact landing spot and level, the receiving parent is tinted with an elbow
+/// line into the placeholder, and the move commits once on release. (On macOS scrolling is the
 /// wheel/trackpad, so a click-drag here doesn't fight the ScrollView.)
 struct NoteView: View {
     @Bindable var controller: NoteController
 
     @State private var titleText: String
     @State private var revealed = false
-    @State private var draggingTaskID: TaskItem.ID?
-    @State private var dragOffsetY: CGFloat = 0
-    @State private var dropIndex: Int?
-    @State private var dropLevel: Int = 0
-    @State private var dragStartLevel: Int = 0
+    @State private var drag: ReorderDrag
+    // True while a reorder gesture is live. SwiftUI resets it when the gesture ends *or is cancelled*;
+    // a cancel never reaches `onEnded`, so this is what puts the task back instead of leaving it lifted.
+    @GestureState private var reorderGestureActive = false
     @State private var rowFrames: [RowFrame] = []
     // The subtask currently being filled in the rapid-add flow. It both drives auto-focus (the row
     // whose id this matches grabs the keyboard) and chains the run: committing it with Return opens
@@ -55,13 +58,20 @@ struct NoteView: View {
 
     private static let listSpace = "tic.tasklist"
 
-    init(controller: NoteController) {
+    #if DEBUG
+    /// Times the task list has been rebuilt; tests use it to check a drag doesn't redo it every frame.
+    static var taskListRenders = 0
+    #endif
+
+    /// `drag` is injectable so tests can watch a reorder drag's state.
+    init(controller: NoteController, drag: ReorderDrag = ReorderDrag()) {
         self.controller = controller
         _titleText = State(initialValue: controller.note.title)
+        _drag = State(initialValue: drag)
     }
 
     private var note: Note { controller.note }
-    private var isDragging: Bool { draggingTaskID != nil }
+    private var isDragging: Bool { drag.taskID != nil }
 
     private var theme: NoteTheme {
         NoteTheme(color: note.color, surface: note.material == .glass ? .glass : .solid)
@@ -132,14 +142,18 @@ struct NoteView: View {
     private var taskList: some View {
         // Everything below reasons in *displayed* space: the source-of-truth `tasks` with the note's
         // completed-display options applied. Equal to `controller.tasks` when both options are off.
-        let display = controller.displayedTasks
+        // Mid-drag the dragged block leaves the list and its head stands in as the drop placeholder.
+        #if DEBUG
+        Self.taskListRenders += 1
+        #endif
+        let display = isDragging ? dragRows : controller.displayedTasks
         let add = activeAdd
+        let dropParent = dropParentID
         return ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(Array(display.enumerated()), id: \.element.id) { index, task in
-                        if isDragging, dropIndex == index { dropIndicator(level: dropLevel) }
-                        row(task)
+                        row(task, isDropParent: task.id == dropParent)
                         if let add, add.afterIndex == index {
                             AddSubtaskRow(
                                 theme: theme,
@@ -153,11 +167,11 @@ struct NoteView: View {
                             )
                         }
                     }
-                    if isDragging, dropIndex == display.count { dropIndicator(level: dropLevel) }
                 }
                 .padding(.top, 4)
                 .padding(.bottom, 12)   // breathing room so the last row never crowds the quick-add bar
                 .coordinateSpace(.named(Self.listSpace))
+                .overlay(alignment: .topLeading) { dragOverlay(parentID: dropParent) }
                 .onPreferenceChange(RowFrame.Key.self) { rowFrames = $0 }
             }
             .scrollContentBackground(.hidden)
@@ -176,6 +190,11 @@ struct NoteView: View {
             .onChange(of: addingRowID) { _, newID in
                 guard let newID else { return }
                 withAnimation(.easeInOut(duration: 0.2)) { proxy.scrollTo(newID, anchor: .bottom) }
+            }
+            .onChange(of: reorderGestureActive) { _, active in
+                // Deferred a tick so a normal drop's `onEnded` (whichever order SwiftUI runs them in)
+                // commits first; only a cancelled drag is still in flight here, and it's put back.
+                if !active { Task { @MainActor in cancelDrag() } }
             }
             .onChange(of: controller.note.title) { _, newTitle in
                 // An agent (or another writer) renamed the note: reflect it unless the user is mid-edit.
@@ -244,12 +263,51 @@ struct NoteView: View {
         return ActiveAdd(afterIndex: afterIndex, level: root.indentLevel + 1, parentID: root.id)
     }
 
-    private func row(_ task: TaskItem) -> some View {
-        let dragging = draggingTaskID == task.id
-        return TaskRowView(
+    private func row(_ task: TaskItem, isDropParent: Bool) -> some View {
+        let isHead = drag.taskID == task.id
+        // Mid-drag the dragged row stays mounted — invisible, one line tall, under its placeholder. It
+        // received the drag's mouse-down, and removing it would silently stop the drag's events.
+        return taskRow(task)
+            .background {
+                if isDropParent {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(theme.accent.opacity(0.13))
+                        .padding(.leading, CGFloat(task.indentLevel) * NoteLayout.indentStep)
+                        .padding(.horizontal, -6)
+                }
+            }
+            .opacity(isHead ? 0 : 1)
+            .frame(height: isHead ? LiftedRow.height - 2 : nil, alignment: .top)
+            .overlay {
+                if isHead {
+                    DropPlaceholder(task: task, carried: drag.block.count - 1, level: drag.level, theme: theme)
+                }
+            }
+            .padding(.horizontal, NoteLayout.rowInset)
+            .padding(.vertical, 1)
+            .background(
+                GeometryReader { geo in
+                    Color.clear.preference(
+                        key: RowFrame.Key.self,
+                        value: [RowFrame(id: task.id, frame: geo.frame(in: .named(Self.listSpace)))]
+                    )
+                }
+            )
+            // Reorder is paused while completed are auto-sorted to the bottom (it would fight the sort), and on a
+            // row whose image is being pointed at or cropped (so its buttons / crop handles never drag the task).
+            // `.subviews` disables only this drag gesture, leaving the checkbox / editor / image usable.
+            .gesture(
+                reorderGesture(for: task),
+                including: controller.isReorderable && imageInteractionTaskID != task.id ? .all : .subviews
+            )
+    }
+
+    private func taskRow(_ task: TaskItem) -> some View {
+        TaskRowView(
             task: task,
             theme: theme,
             autoEdit: task.id == addingRowID,
+            canReorder: controller.isReorderable,
             onToggle: { controller.toggle(task) },
             onCommit: { controller.commitText(task, $0) },
             onDelete: { controller.delete(task) },
@@ -269,32 +327,6 @@ struct NoteView: View {
                 )
             },
             onPasteImage: { controller.attachImage($0, to: task) }
-        )
-        .padding(.horizontal, 12)
-        .padding(.vertical, 1)
-        .background(
-            GeometryReader { geo in
-                Color.clear.preference(
-                    key: RowFrame.Key.self,
-                    value: [RowFrame(id: task.id, midY: geo.frame(in: .named(Self.listSpace)).midY)]
-                )
-            }
-        )
-        // Follow the cursor vertically; shift horizontally to preview the target nesting level.
-        .offset(
-            x: dragging ? CGFloat(dropLevel - dragStartLevel) * NoteLayout.indentStep : 0,
-            y: dragging ? dragOffsetY : 0
-        )
-        .scaleEffect(dragging ? 1.02 : 1, anchor: .center)
-        .opacity(dragging ? 0.95 : 1)
-        .shadow(color: .black.opacity(dragging ? 0.18 : 0), radius: dragging ? 5 : 0, y: 2)
-        .zIndex(dragging ? 1 : 0)
-        // Reorder is paused while completed are auto-sorted to the bottom (it would fight the sort), and on a
-        // row whose image is being pointed at or cropped (so its buttons / crop handles never drag the task).
-        // `.subviews` disables only this drag gesture, leaving the checkbox / editor / image usable.
-        .gesture(
-            reorderGesture(for: task),
-            including: controller.isReorderable && imageInteractionTaskID != task.id ? .all : .subviews
         )
     }
 }
@@ -320,68 +352,130 @@ extension NoteView {
 
     private func reorderGesture(for task: TaskItem) -> some Gesture {
         DragGesture(minimumDistance: 6, coordinateSpace: .named(Self.listSpace))
+            .updating($reorderGestureActive) { _, active, _ in active = true }
             .onChanged { value in
-                if draggingTaskID != task.id {
-                    draggingTaskID = task.id
-                    dragStartLevel = task.indentLevel   // re-nest is measured from where it started
-                }
-                dragOffsetY = value.translation.height
-                let index = insertionIndex(at: value.location.y)
-                dropIndex = index
-                dropLevel = targetLevel(forDropIndex: index, dragWidth: value.translation.width)
+                if drag.taskID == nil { beginDrag(task, from: value.startLocation) }
+                drag.location = value.location   // read only by the lifted row: no list re-render
+                retarget()
             }
-            .onEnded { _ in
-                let id = draggingTaskID
-                let index = dropIndex
-                let level = dropLevel
-                withAnimation(.snappy(duration: 0.18)) {
-                    if let id, let index {
-                        // `index` is in displayed space; map it back to a true `tasks` insertion index.
-                        controller.moveTask(
-                            id: id,
-                            toInsertionIndex: controller.trueInsertionIndex(forDisplayedIndex: index),
-                            targetLevel: level
-                        )
-                    }
-                    draggingTaskID = nil
-                    dragOffsetY = 0
-                    dropIndex = nil
-                }
-            }
+            .onEnded { _ in endDrag() }
     }
 
-    /// Number of rows whose midpoint sits above `y` = the index a drop there would insert at.
-    private func insertionIndex(at y: CGFloat) -> Int {
-        rowFrames.filter { $0.midY < y }.count
-    }
-
-    /// The nesting level a drop would land at: the dragged row's starting depth plus how far right
-    /// it's been dragged (one step per `indentStep`), clamped to what the row above the drop allows
-    /// (you can't be deeper than one level below your would-be parent, capped at 3 levels).
-    private func targetLevel(forDropIndex index: Int, dragWidth: CGFloat) -> Int {
+    /// Lifts `task` and its subtree; its row becomes the placeholder, still in its own slot.
+    private func beginDrag(_ task: TaskItem, from start: CGPoint) {
         let display = controller.displayedTasks
-        let above = index - 1
-        let maxLevel = (above >= 0 && above < display.count)
-            ? min(TaskItem.maxIndentLevel, display[above].indentLevel + 1)
-            : 0
-        let desired = dragStartLevel + Int((dragWidth / NoteLayout.indentStep).rounded())
-        return min(max(desired, 0), maxLevel)
+        guard let index = display.firstIndex(where: { $0.id == task.id }) else { return }
+        let range = TaskOutline.subtreeRange(display, at: index)
+        withAnimation(.snappy(duration: 0.16)) {
+            drag.startFrame = rowFrames.first { $0.id == task.id }?.frame ?? .zero
+            drag.startLocation = start
+            drag.location = start
+            drag.blockRange = range
+            drag.slot = range.lowerBound
+            drag.level = task.indentLevel
+            drag.block = Array(display[range])
+        }
     }
 
-    private func dropIndicator(level: Int) -> some View {
-        Capsule()
-            .fill(theme.accent)
-            .frame(height: 2)
-            .padding(.leading, 12 + CGFloat(level) * NoteLayout.indentStep)
-            .padding(.trailing, 12)
+    /// Re-derives the drop slot and level from the pointer, writing only when either changes — so the
+    /// list re-renders a few times per drag, not every frame.
+    private func retarget() {
+        guard let head = drag.block.first else { return }
+        let blockIDs = Set(drag.block.map(\.id))
+        let rest = dragRest
+        // Compare against the rows' on-screen midpoints with the placeholder's gap open, so the slot
+        // only moves once the lifted row has fully crossed a neighbour — no flicker at the boundary.
+        let center = drag.liftedTop + LiftedRow.height / 2
+        let slot = min(rowFrames.filter { !blockIDs.contains($0.id) && $0.frame.midY < center }.count, rest.count)
+        let depth = (drag.block.map(\.indentLevel).max() ?? head.indentLevel) - head.indentLevel
+        let allowed = TaskOutline.dropLevels(rest, slot: slot, blockDepth: depth)
+        let wanted = head.indentLevel + TaskOutline.levelSteps(
+            forDrag: drag.location.x - drag.startLocation.x, step: NoteLayout.indentStep
+        )
+        let level = min(max(wanted, allowed.lowerBound), allowed.upperBound)
+        guard slot != drag.slot || level != drag.level else { return }
+        withAnimation(.snappy(duration: 0.16)) {
+            drag.slot = slot
+            drag.level = level
+        }
+    }
+
+    private func endDrag() {
+        guard let id = drag.taskID else { return }
+        // The slot indexes the list without the block; map it to a displayed, then a true `tasks` index.
+        let index = TaskOutline.insertionIndex(forSlot: drag.slot, removing: drag.blockRange)
+        let level = drag.level
+        withAnimation(.snappy(duration: 0.18)) {
+            controller.moveTask(
+                id: id, toInsertionIndex: controller.trueInsertionIndex(forDisplayedIndex: index), targetLevel: level
+            )
+            drag.block = []
+        }
+    }
+
+    /// Abandons an in-flight drag, leaving every task where it was.
+    private func cancelDrag() {
+        guard isDragging else { return }
+        withAnimation(.snappy(duration: 0.18)) { drag.block = [] }
+    }
+
+    /// The displayed rows minus the dragged block — what a drop slot indexes into.
+    private var dragRest: [TaskItem] {
+        let ids = Set(drag.block.map(\.id))
+        return controller.displayedTasks.filter { !ids.contains($0.id) }
+    }
+
+    /// The rows shown mid-drag: the rest, with the dragged head standing in as the placeholder at the slot.
+    private var dragRows: [TaskItem] {
+        guard let head = drag.block.first else { return controller.displayedTasks }
+        var rows = dragRest
+        rows.insert(head, at: min(drag.slot, rows.count))
+        return rows
+    }
+
+    /// The task that will receive the drop, tinted while dragging; nil for a top-level drop.
+    private var dropParentID: TaskItem.ID? {
+        guard isDragging else { return nil }
+        let rest = dragRest
+        return TaskOutline.dropParentIndex(rest, slot: drag.slot, level: drag.level).map { rest[$0].id }
+    }
+
+    /// Mid-drag: the lifted row under the pointer, and the elbow from the receiving parent to the placeholder.
+    @ViewBuilder
+    private func dragOverlay(parentID: TaskItem.ID?) -> some View {
+        if let head = drag.block.first {
+            ZStack(alignment: .topLeading) {
+                if let thread = dropThread(parentID: parentID) {
+                    thread
+                        .stroke(theme.accent.opacity(0.6), style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+                        .animation(.snappy(duration: 0.16), value: thread)
+                }
+                LiftedRow(drag: drag, task: head, theme: theme)
+            }
+            .allowsHitTesting(false)
+        }
+    }
+
+    /// The elbow from the parent's checkbox, down the indent gutter, into the placeholder's leading edge.
+    private func dropThread(parentID: TaskItem.ID?) -> DropThread? {
+        guard let parentID, let headID = drag.taskID,
+              let parent = rowFrames.first(where: { $0.id == parentID })?.frame,
+              let slot = rowFrames.first(where: { $0.id == headID })?.frame,
+              let level = controller.displayedTasks.first(where: { $0.id == parentID })?.indentLevel
+        else { return nil }
+        return DropThread(
+            x: NoteLayout.rowInset + CGFloat(level) * NoteLayout.indentStep + 8,   // checkbox centre
+            top: parent.minY + 20,                                                  // just under it
+            bottom: slot.midY,
+            endX: NoteLayout.rowInset - 6 + CGFloat(drag.level) * NoteLayout.indentStep
+        )
     }
 }
 
-/// The vertical midpoint of a task row, reported up so the drag can compute where a dragged row
-/// would land — without reshuffling the list during the drag.
+/// A task row's frame in list coordinates, reported up so a drag knows where the rows sit.
 private struct RowFrame: Equatable {
     let id: UUID
-    let midY: CGFloat
+    let frame: CGRect
 
     struct Key: PreferenceKey {
         static let defaultValue: [RowFrame] = []
@@ -416,7 +510,7 @@ private struct AddSubtaskRow: View {
         }
         .buttonStyle(.plain)
         .padding(.vertical, 3)
-        .padding(.leading, 12 + CGFloat(level) * NoteLayout.indentStep)
+        .padding(.leading, NoteLayout.rowInset + CGFloat(level) * NoteLayout.indentStep)
         .padding(.trailing, 16)
         .onHover { h in
             withAnimation(.easeInOut(duration: 0.1)) { hovering = h }

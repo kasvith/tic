@@ -150,6 +150,39 @@ enum TaskOutline {
         return remainder
     }
 
+    // MARK: - Drop targeting
+
+    /// The levels a dragged block may land at when dropped at `slot` in `rest` (the list without the
+    /// block): at most one deeper than the row above (top level when there's none), and never
+    /// shallower than the row below — or that row would silently become the dropped task's child.
+    /// `blockDepth` (how far the block's deepest row sits below its head) keeps it within the cap.
+    static func dropLevels(_ rest: [TaskItem], slot: Int, blockDepth: Int) -> ClosedRange<Int> {
+        let deepest = slot > 0 ? rest[slot - 1].indentLevel + 1 : 0
+        let upper = max(0, min(deepest, TaskItem.maxIndentLevel - blockDepth))
+        let lower = slot < rest.count ? min(rest[slot].indentLevel, upper) : 0
+        return lower...upper
+    }
+
+    /// The row in `rest` that would parent a block dropped at `slot` with `level`: the nearest row
+    /// above the slot that is shallower. `nil` for a top-level drop.
+    static func dropParentIndex(_ rest: [TaskItem], slot: Int, level: Int) -> Int? {
+        guard level > 0 else { return nil }
+        return rest[..<min(slot, rest.count)].lastIndex { $0.indentLevel < level }
+    }
+
+    /// Maps a drop `slot` (an index into the list without the dragged `block`) to the insertion
+    /// index into the full list that `movingSubtree` expects.
+    static func insertionIndex(forSlot slot: Int, removing block: Range<Int>) -> Int {
+        slot < block.lowerBound ? slot : slot + block.count
+    }
+
+    /// Whole levels a horizontal drag of `distance` asks for at `step` points per level. A level needs
+    /// ~70% of a step, so a vertical drag that drifts sideways a little doesn't re-nest.
+    static func levelSteps(forDrag distance: Double, step: Double) -> Int {
+        let steps = distance / step
+        return Int(steps > 0 ? (steps + 0.3).rounded(.down) : (steps - 0.3).rounded(.up))
+    }
+
     // MARK: - Normalisation
 
     /// Forces the outline invariant: first task at level 0, every other task at most one level

@@ -378,6 +378,9 @@ struct ImageWindowTests {
             styleMask: [.titled], backing: .buffered, defer: false
         )
         let view = ZoomScrollView()
+        // Pin overlay scroll bars: legacy ones (a mouse, "Always show scroll bars", or another test's
+        // synthetic mouse events flipping the process-wide preference) take width and shift the fit.
+        view.scrollerStyle = .overlay
         window.contentView = view
         view.show(makeImage(width: 400, height: 100))
         let fitted = view.magnification

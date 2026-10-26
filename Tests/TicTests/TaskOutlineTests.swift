@@ -228,6 +228,52 @@ struct TaskOutlineTests {
         #expect(zip(normalized, normalized.dropFirst()).allSatisfy { $1.indentLevel <= $0.indentLevel + 1 })
     }
 
+    // MARK: - Drop targeting
+
+    @Test("a drop is at most one level under the row above and never adopts the row below")
+    func dropLevelsRespectNeighbours() {
+        let rest = make([("A", 0, false), ("A1", 1, false)])
+        #expect(TaskOutline.dropLevels(rest, slot: 0, blockDepth: 0) == 0...0)   // first row: top level
+        #expect(TaskOutline.dropLevels(rest, slot: 1, blockDepth: 0) == 1...1)   // between A and A1: must nest
+        #expect(TaskOutline.dropLevels(rest, slot: 2, blockDepth: 0) == 0...2)   // after A1: anything valid
+    }
+
+    @Test("a dragged subtree's depth limits how deep it can drop")
+    func dropLevelsRespectBlockDepth() {
+        let rest = make([("A", 0, false), ("A1", 1, false)])
+        #expect(TaskOutline.dropLevels(rest, slot: 2, blockDepth: 1) == 0...1)
+        #expect(TaskOutline.dropLevels(rest, slot: 2, blockDepth: 2) == 0...0)
+    }
+
+    @Test("the drop parent is the nearest shallower row above the slot")
+    func dropParent() {
+        let rest = make([("A", 0, false), ("A1", 1, false), ("A1a", 2, false), ("B", 0, false)])
+        #expect(TaskOutline.dropParentIndex(rest, slot: 3, level: 1) == 0)    // → A
+        #expect(TaskOutline.dropParentIndex(rest, slot: 3, level: 2) == 1)    // → A1
+        #expect(TaskOutline.dropParentIndex(rest, slot: 3, level: 0) == nil)  // top level
+        #expect(TaskOutline.dropParentIndex(rest, slot: 4, level: 1) == 3)    // → B
+    }
+
+    @Test("a slot maps back to an insertion index around the removed block")
+    func slotToInsertionIndex() {
+        let tasks = make([("A", 0, false), ("B", 0, false), ("C", 0, false), ("C1", 1, false),
+                          ("D", 0, false), ("E", 0, false)])
+        #expect(TaskOutline.insertionIndex(forSlot: 0, removing: 2..<4) == 0)
+        #expect(TaskOutline.insertionIndex(forSlot: 2, removing: 2..<4) == 4)   // back where it was
+        let index = TaskOutline.insertionIndex(forSlot: 3, removing: 2..<4)      // rest: A B D | E
+        let out = TaskOutline.movingSubtree(tasks, id: tasks[2].id, toInsertionIndex: index)
+        #expect(out.map(\.text) == ["A", "B", "D", "C", "C1", "E"])
+    }
+
+    @Test("a sideways drag re-nests only past ~70% of an indent step")
+    func levelStepsHysteresis() {
+        #expect(TaskOutline.levelSteps(forDrag: 13, step: 20) == 0)
+        #expect(TaskOutline.levelSteps(forDrag: 15, step: 20) == 1)
+        #expect(TaskOutline.levelSteps(forDrag: 35, step: 20) == 2)
+        #expect(TaskOutline.levelSteps(forDrag: -13, step: 20) == 0)
+        #expect(TaskOutline.levelSteps(forDrag: -15, step: 20) == -1)
+    }
+
     // MARK: - Level-change diff (what gets persisted)
 
     @Test("a drag that reorders AND re-nests still reports the re-nest as a level change")
