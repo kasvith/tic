@@ -3,8 +3,10 @@
 import Site from '../layouts/Site.astro';
 import Note, { type Task } from '../components/Note.astro';
 import Icon from '../components/Icon.astro';
-import { site } from '../data/site';
+import InstallCard from '../components/InstallCard.astro';
+import { site, release } from '../data/site';
 import { competitors, features, comparePath, type Competitor } from '../data/compare';
+import { guides, guidePath } from '../data/guides';
 
 export function getStaticPaths() {
   return competitors.map((c) => ({ params: { app: c.slug }, props: { c } }));
@@ -13,6 +15,7 @@ export function getStaticPaths() {
 const { c } = Astro.props as { c: Competitor };
 const url = `${site.url}${comparePath(c)}`;
 const others = competitors.filter((o) => o.slug !== c.slug);
+const related = guides.filter((g) => g.compare.includes(c.slug));
 
 const jsonLd = {
   '@context': 'https://schema.org',
@@ -72,11 +75,9 @@ const h2 = 'font-display text-[clamp(2rem,4.5vw,3.25rem)] leading-[1.04] trackin
         <span>{c.h1}</span>
       </h1>
       <p class="mt-5 max-w-xl leading-relaxed text-muted text-pretty sm:mt-7 sm:text-lg">{c.lede}</p>
-      <div class="mt-7 flex flex-wrap gap-3 sm:mt-9">
-        <a href="/#install" class:list={[btn, 'max-sm:w-full']}><Icon name="download-simple" class="size-5" />Install Tic</a>
-        <a href="/" class:list={[btnGhost, 'max-sm:w-full']}>See everything Tic does</a>
-      </div>
-      <p class="mt-5 text-sm text-muted">Free and open source. Needs macOS 14 Sonoma or later.</p>
+      <InstallCard id="install-hero" version={release?.version} class="mt-7 sm:mt-9" />
+      <a href="/" class="mt-4 flex w-fit items-center gap-2 font-semibold text-muted transition hover:text-fg">See everything Tic does<Icon name="arrow-right" class="size-4" /></a>
+      <p class="mt-5 text-sm text-muted">Free and open source. Needs macOS 14 Sonoma or later on Apple silicon.</p>
     </div>
     <div class="mx-auto w-full max-w-[22em] sm:justify-self-center" style="font-size:15px">
       <Note title="Errands" color={c.color} tasks={errands} revealed pinned interactive width="22em" />
@@ -139,6 +140,11 @@ const h2 = 'font-display text-[clamp(2rem,4.5vw,3.25rem)] leading-[1.04] trackin
         </>
       ))}.
     </p>
+    {related.length > 0 && (
+      <p class="mt-3 text-muted">
+        Guides: {related.map((g, i) => <>{i > 0 && ' · '}<a href={guidePath(g)} class="text-fg underline underline-offset-4">{g.h1}</a></>)}
+      </p>
+    )}
   </section>
 
   <section class="px-5 py-16 text-center sm:py-24">

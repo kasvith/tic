@@ -19,7 +19,7 @@ export const features: { id: string; label: string; tic: string }[] = [
   { id: 'account', label: 'Account', tic: 'None' },
   { id: 'price', label: 'Price', tic: 'Free and open source, MIT license' },
   { id: 'data', label: 'Where your data lives', tic: 'On your Mac, in a SQLite file you can open' },
-  { id: 'platforms', label: 'Runs on', tic: 'macOS 14 Sonoma or later' },
+  { id: 'platforms', label: 'Runs on', tic: 'macOS 14 Sonoma or later, Apple silicon' },
 ];
 
 export interface Competitor {
@@ -66,6 +66,10 @@ export const competitors: Competitor[] = [
       {
         q: 'Is Tic a replacement for Apple Stickies?',
         a: 'For lists, yes. For a paragraph of notes or a phone number, Stickies is still the better scratchpad. The two run side by side.',
+      },
+      {
+        q: 'Can you add checkboxes in Apple Stickies?',
+        a: 'Not real ones. You can type ☐ and ☑ symbols from the Character Viewer or make a bulleted list with Option-Tab, but neither can be ticked with a click. Our guide to adding checkboxes in Stickies walks through both.',
       },
       {
         q: 'Can I import my Stickies notes into Tic?',

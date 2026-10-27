@@ -173,6 +173,12 @@ export const faqs = [
   {
     q: 'How do I put a to-do list on my Mac desktop?',
     a: 'Install Tic and press ⌘N. The list opens as a sticky note on the desktop and stays where you put it. Click the pin to keep it on top of other windows, or double-click the title to roll it up to a bar.',
+    link: { href: '/guides/to-do-list-on-mac-desktop/', label: 'Other ways to keep a list on your desktop' },
+  },
+  {
+    q: 'Does Apple Stickies have checkboxes?',
+    a: 'No. Stickies has no checkbox feature: the usual workarounds are typing ☐ and ☑ symbols or making a bulleted list, and neither can be ticked with a click. Tic keeps the sticky-note idea and puts a real checkbox on every task.',
+    link: { href: '/guides/stickies-checkboxes/', label: 'How to add checkboxes in Stickies' },
   },
   {
     q: 'Is Tic free?',

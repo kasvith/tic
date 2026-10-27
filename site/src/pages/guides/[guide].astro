@@ -1,0 +1,158 @@
+---
+// How-to guides, one per entry in src/data/guides.ts: /guides/stickies-checkboxes/, …
+import Site from '../../layouts/Site.astro';
+import Note from '../../components/Note.astro';
+import Icon from '../../components/Icon.astro';
+import InstallCard from '../../components/InstallCard.astro';
+import { site, release } from '../../data/site';
+import { competitors, comparePath } from '../../data/compare';
+import { guides, guidePath, type Guide } from '../../data/guides';
+
+export function getStaticPaths() {
+  return guides.map((g) => ({ params: { guide: g.slug }, props: { g } }));
+}
+
+const { g } = Astro.props as { g: Guide };
+const url = `${site.url}${guidePath(g)}`;
+const related = [
+  ...competitors.filter((c) => g.compare.includes(c.slug)).map((c) => ({ href: comparePath(c), label: `Tic vs ${c.name}` })),
+  ...guides.filter((o) => o.slug !== g.slug).map((o) => ({ href: guidePath(o), label: o.h1 })),
+];
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'TechArticle',
+      '@id': `${url}#article`,
+      url,
+      headline: g.h1,
+      description: g.description,
+      inLanguage: 'en',
+      datePublished: g.published,
+      dateModified: g.modified,
+      author: { '@id': `${site.url}/#author` },
+      publisher: { '@id': `${site.url}/#author` },
+      isPartOf: { '@id': `${site.url}/#website` },
+      about: { '@id': `${site.url}/#app` },
+      image: `${site.url}/og.png`,
+    },
+    {
+      '@type': 'BreadcrumbList',
+      '@id': `${url}#breadcrumb`,
+      itemListElement: [
+        { '@type': 'ListItem', position: 1, name: 'Tic', item: `${site.url}/` },
+        { '@type': 'ListItem', position: 2, name: g.h1, item: url },
+      ],
+    },
+    {
+      '@type': 'FAQPage',
+      '@id': `${url}#faq`,
+      isPartOf: { '@id': `${url}#article` },
+      mainEntity: g.faqs.map((f) => ({ '@type': 'Question', name: f.q, acceptedAnswer: { '@type': 'Answer', text: f.a } })),
+    },
+  ],
+};
+
+const h2 = 'font-display text-[clamp(1.6rem,3.4vw,2.25rem)] leading-[1.08] tracking-[-0.02em] text-balance font-extrabold';
+const fmt = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+---
+
+<Site title={g.title} description={g.description} jsonLd={jsonLd}>
+  <article class="mx-auto max-w-3xl px-5 pb-12 pt-6 sm:pb-20 sm:pt-10">
+    <nav aria-label="Breadcrumb" class="text-sm text-muted">
+      <a href="/" class="hover:text-fg">Tic</a> <span aria-hidden="true">›</span> Guides
+    </nav>
+    <h1 class="mt-4 font-display text-[clamp(2.3rem,5.4vw,3.75rem)] font-extrabold leading-[1] tracking-[-0.03em] text-balance">{g.h1}</h1>
+    <p class="mt-4 text-sm text-muted">Updated <time datetime={g.modified}>{fmt(g.modified)}</time></p>
+
+    <section aria-label="Short answer" class="mt-8 rounded-2xl bg-surface p-5 ring-1 ring-line sm:p-6">
+      <p class="text-sm font-semibold text-muted">Short answer</p>
+      <p class="mt-2 text-lg leading-relaxed text-pretty">{g.answer}</p>
+    </section>
+
+    {g.sections.map((s) => (
+      <section class="mt-12 sm:mt-14">
+        <h2 class={h2}>{s.heading}</h2>
+        {s.body?.map((p) => <p class="mt-4 leading-relaxed text-muted sm:text-lg">{p}</p>)}
+        {s.steps && (
+          <ol class="mt-5 list-decimal space-y-2.5 pl-6 leading-relaxed marker:font-semibold marker:text-muted sm:text-lg">
+            {s.steps.map((step) => <li class="pl-1">{step}</li>)}
+          </ol>
+        )}
+        {s.link && (
+          <a href={s.link.href} class="mt-4 inline-flex items-center gap-1.5 font-semibold underline underline-offset-4">{s.link.label}<Icon name="arrow-right" class="size-4" /></a>
+        )}
+      </section>
+    ))}
+
+    {g.table && (
+      <section class="mt-12 sm:mt-14">
+        <h2 class={h2}>{g.table.heading}</h2>
+        <div class="mt-6 overflow-x-auto">
+          <table class="w-full min-w-[34rem] text-left text-[0.95rem]">
+            <thead>
+              <tr class="border-b border-line text-sm text-muted">
+                {g.table.head.map((h) => <th scope="col" class="py-3 pr-4 font-medium">{h || <span class="sr-only">Feature</span>}</th>)}
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-line">
+              {g.table.rows.map(([label, ...cells]) => (
+                <tr class="align-top">
+                  <th scope="row" class="py-3.5 pr-4 font-semibold">{label}</th>
+                  {cells.map((cell, i) => <td class:list={['py-3.5 pr-4', i === cells.length - 1 ? 'text-fg' : 'text-muted']}>{cell}</td>)}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    )}
+  </article>
+
+  <section class="border-y border-line bg-surface/60 py-12 sm:py-20">
+    <div class="mx-auto grid max-w-6xl items-center gap-10 px-5 lg:grid-cols-[1fr_1.15fr] lg:gap-14">
+      <div class="mx-auto w-full max-w-[22em]" style="font-size:15px">
+        <Note title={g.tic.note.title} color={g.tic.note.color} tasks={g.tic.note.tasks} revealed pinned interactive width="22em" />
+      </div>
+      <div>
+        <h2 class={h2}>{g.tic.heading}</h2>
+        {g.tic.body.map((p) => <p class="mt-4 leading-relaxed text-muted sm:text-lg">{p}</p>)}
+        <InstallCard id="install-card" version={release?.version} class="mt-7" />
+      </div>
+    </div>
+  </section>
+
+  <section class="mx-auto max-w-3xl px-5 py-12 sm:py-20">
+    <h2 class={h2}>Questions</h2>
+    <div class="mt-8 divide-y divide-line border-y border-line">
+      {g.faqs.map((f) => (
+        <details class="group py-5">
+          <summary class="flex cursor-pointer list-none items-center justify-between gap-6 font-medium sm:text-lg">
+            {f.q}
+            <Icon name="plus" class="size-5 shrink-0 text-muted transition group-open:rotate-45" />
+          </summary>
+          <p class="mt-3 leading-relaxed text-muted">{f.a}</p>
+        </details>
+      ))}
+    </div>
+    <nav aria-label="Related" class="mt-8">
+      <p class="font-semibold">Related</p>
+      <ul class="mt-2 space-y-1.5">
+        {related.map((r) => <li><a href={r.href} class="text-muted underline underline-offset-4 hover:text-fg">{r.label}</a></li>)}
+        <li><a href="/" class="text-muted underline underline-offset-4 hover:text-fg">Everything Tic does</a></li>
+      </ul>
+    </nav>
+  </section>
+</Site>
+
+<script>
+  document.addEventListener('click', (event) => {
+    const check = (event.target as Element).closest('button.cb');
+    if (!check) return;
+    const row = check.closest('.task')!;
+    const done = !row.hasAttribute('data-done');
+    row.toggleAttribute('data-done', done);
+    check.setAttribute('aria-pressed', String(done));
+  });
+</script>
