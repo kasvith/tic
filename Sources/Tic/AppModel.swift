@@ -24,6 +24,7 @@ final class AppModel {
     @ObservationIgnored private var notesObservation: Task<Void, Never>?
     @ObservationIgnored private var searchWindow: NSWindow?
     @ObservationIgnored private var mcpWindow: NSWindow?
+    @ObservationIgnored private var updateWindow: NSWindow?
 
     private init() {
         // The DB lives in Application Support; fall back to in-memory so the app still runs if
@@ -101,29 +102,39 @@ final class AppModel {
     /// reliably, unlike the menu-bar popover.)
     func openSearch() {
         if searchWindow == nil {
-            let panel = NSPanel(
-                contentRect: NSRect(x: 0, y: 0, width: 700, height: 440),
-                styleMask: [.titled, .closable, .fullSizeContentView],
-                backing: .buffered, defer: false
-            )
-            panel.titleVisibility = .hidden
-            panel.titlebarAppearsTransparent = true
-            panel.isFloatingPanel = true
-            panel.level = .floating
-            panel.hidesOnDeactivate = false
-            panel.isReleasedWhenClosed = false
-            panel.isMovableByWindowBackground = true
-            panel.isOpaque = false
-            panel.backgroundColor = .clear
-            panel.standardWindowButton(.closeButton)?.isHidden = true
-            panel.standardWindowButton(.miniaturizeButton)?.isHidden = true
-            panel.standardWindowButton(.zoomButton)?.isHidden = true
-            panel.contentView = NSHostingView(rootView: ListsSearchView())
-            searchWindow = panel
+            searchWindow = Self.floatingPanel(width: 700, height: 440, content: ListsSearchView())
         }
-        guard let window = searchWindow else { return }
-        centerOnActiveDisplay(window)    // centered on screen every time it's called
-        window.level = .floating         // and always on top when called
+        searchWindow.map(present)
+    }
+
+    /// A borderless-looking floating panel hosting `content` — the shared shell of the Lists palette,
+    /// the MCP setup window and the update window. Created once and reused.
+    private static func floatingPanel(width: CGFloat, height: CGFloat, content: some View) -> NSPanel {
+        let panel = NSPanel(
+            contentRect: NSRect(x: 0, y: 0, width: width, height: height),
+            styleMask: [.titled, .closable, .fullSizeContentView],
+            backing: .buffered, defer: false
+        )
+        panel.titleVisibility = .hidden
+        panel.titlebarAppearsTransparent = true
+        panel.isFloatingPanel = true
+        panel.level = .floating
+        panel.hidesOnDeactivate = false
+        panel.isReleasedWhenClosed = false
+        panel.isMovableByWindowBackground = true
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.standardWindowButton(.closeButton)?.isHidden = true
+        panel.standardWindowButton(.miniaturizeButton)?.isHidden = true
+        panel.standardWindowButton(.zoomButton)?.isHidden = true
+        panel.contentView = NSHostingView(rootView: content)
+        return panel
+    }
+
+    /// Brings a panel up centered on the pointer's display and on top, every time it's called.
+    private func present(_ window: NSWindow) {
+        centerOnActiveDisplay(window)
+        window.level = .floating
         window.makeKeyAndOrderFront(nil)
         NSApp.activate()
     }
@@ -145,36 +156,26 @@ final class AppModel {
     /// Opens the "AI Agents (MCP)" setup window (the toggle + per-client install snippets). A single
     /// reused, centered, floating panel — same treatment as the Lists palette.
     func openMCPSetup() {
-        if mcpWindow == nil {
-            let panel = NSPanel(
-                contentRect: NSRect(x: 0, y: 0, width: 680, height: 460),
-                styleMask: [.titled, .closable, .fullSizeContentView],
-                backing: .buffered, defer: false
-            )
-            panel.titleVisibility = .hidden
-            panel.titlebarAppearsTransparent = true
-            panel.isFloatingPanel = true
-            panel.level = .floating
-            panel.hidesOnDeactivate = false
-            panel.isReleasedWhenClosed = false
-            panel.isMovableByWindowBackground = true
-            panel.isOpaque = false
-            panel.backgroundColor = .clear
-            panel.standardWindowButton(.closeButton)?.isHidden = true
-            panel.standardWindowButton(.miniaturizeButton)?.isHidden = true
-            panel.standardWindowButton(.zoomButton)?.isHidden = true
-            panel.contentView = NSHostingView(rootView: MCPSetupView())
-            mcpWindow = panel
-        }
-        guard let window = mcpWindow else { return }
-        centerOnActiveDisplay(window)
-        window.level = .floating
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate()
+        if mcpWindow == nil { mcpWindow = Self.floatingPanel(width: 680, height: 460, content: MCPSetupView()) }
+        mcpWindow.map(present)
     }
 
     func dismissMCPSetup() {
         mcpWindow?.orderOut(nil)
+    }
+
+    /// Opens the update window (what's new since this version, then Update Now / Later) from the
+    /// menu item or the banner. Opening it counts as having seen the update.
+    func openUpdate() {
+        guard updates.available != nil else { return }
+        updates.markSeen()
+        if updateWindow == nil { updateWindow = Self.floatingPanel(width: 460, height: 440, content: UpdateView()) }
+        updateWindow.map(present)
+    }
+
+    func dismissUpdate() {
+        updateWindow?.orderOut(nil)
+        updates.clearFailure()
     }
 
     // MARK: - MCP (AI agents)

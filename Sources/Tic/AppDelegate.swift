@@ -56,7 +56,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 /// Update-banner delegate: show it even while Tic is frontmost (macOS hides a frontmost app's
-/// notifications by default), and a click opens the release page.
+/// notifications by default), and a click opens the update window.
 extension AppDelegate: UNUserNotificationCenterDelegate {
     nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter, willPresent notification: UNNotification
@@ -67,6 +67,6 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse
     ) async {
-        await MainActor.run { AppModel.shared.updates.openReleasePage() }
+        await MainActor.run { AppModel.shared.openUpdate() }
     }
 }

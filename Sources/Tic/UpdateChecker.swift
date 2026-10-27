@@ -5,14 +5,27 @@ import UserNotifications
 
 /// Checks GitHub Releases for a newer Tic and surfaces it quietly: a menu-bar item while an update
 /// exists, a dot on the menu-bar icon until the user has looked, and one notification banner per
-/// new version. Check-only on purpose — Tic is ad-hoc signed, so a self-replacing updater
-/// (Sparkle) can't be trusted; the release page is the download.
+/// new version. Either opens the update window (`UpdateView`): the notes for every version since this
+/// one, then Update Now, which installs it (`UpdateInstaller`) and restarts Tic.
 @MainActor
 @Observable
 final class UpdateChecker {
     struct Release: Sendable, Equatable {
         let version: String   // "0.6.0" (tag without the leading "v")
         let url: URL          // the GitHub release page
+        /// Notes for recent published releases, newest first; `notes(since:)` picks the ones to show.
+        var notes: [ReleaseNotes] = []
+
+        /// What's new since `current`: the notes of every newer version, newest first.
+        func notes(since current: String) -> [ReleaseNotes] {
+            notes.filter { UpdateChecker.isNewer($0.version, than: current) }
+        }
+    }
+
+    enum InstallState: Equatable {
+        case idle
+        case installing
+        case failed(String)
     }
 
     /// A release newer than the running build, if the last check found one.
@@ -23,15 +36,23 @@ final class UpdateChecker {
     /// item is clicked.
     private(set) var isUnseen = false
 
+    /// Where an Update Now is at; drives the update window's footer and the menu item.
+    private(set) var installState = InstallState.idle
+
     /// The menu item's title; also how the menu-tracking observer recognises our menu.
-    var menuTitle: String? { available.map { "Update Available: v\($0.version)…" } }
+    var menuTitle: String? {
+        available.map {
+            installState == .installing ? "Installing v\($0.version)…" : "Update Available: v\($0.version)…"
+        }
+    }
 
     /// The running build's `CFBundleShortVersionString`. Nil under `swift run` (no bundle), which
     /// disables the checker entirely.
     let currentVersion: String?
 
-    private nonisolated static let latestReleaseURL =
-        URL(string: "https://api.github.com/repos/kasvith/tic/releases/latest")!
+    /// The list, not `releases/latest`: one request brings the notes for every version since this one.
+    private nonisolated static let releasesURL =
+        URL(string: "https://api.github.com/repos/kasvith/tic/releases?per_page=20")!
     private static let interval: TimeInterval = 24 * 60 * 60
     private static let notifiedVersionKey = "updateNotifiedVersion"
     private static let seenVersionKey = "updateSeenVersion"
@@ -39,6 +60,8 @@ final class UpdateChecker {
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let fetch: @Sendable () async throws -> Release
     @ObservationIgnored private let notify: @MainActor (Release, String) async -> Void
+    @ObservationIgnored private let installer: @Sendable (Release) async throws -> Void
+    @ObservationIgnored private let restart: @MainActor () -> Void
     @ObservationIgnored private var loop: Task<Void, Never>?
 
     /// The parameters exist for tests; the app uses the defaults (GitHub + a real banner).
@@ -46,12 +69,16 @@ final class UpdateChecker {
         currentVersion: String? = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
         defaults: UserDefaults = .standard,
         fetch: @escaping @Sendable () async throws -> Release = UpdateChecker.fetchLatest,
-        notify: @escaping @MainActor (Release, String) async -> Void = UpdateChecker.postBanner
+        notify: @escaping @MainActor (Release, String) async -> Void = UpdateChecker.postBanner,
+        installer: @escaping @Sendable (Release) async throws -> Void = UpdateChecker.installOverRunningApp,
+        restart: @escaping @MainActor () -> Void = UpdateChecker.relaunch
     ) {
         self.currentVersion = currentVersion
         self.defaults = defaults
         self.fetch = fetch
         self.notify = notify
+        self.installer = installer
+        self.restart = restart
 
         // Opening the menu (and so seeing the item) counts as "seen": the dot goes once it closes.
         NotificationCenter.default.addObserver(
@@ -106,6 +133,37 @@ final class UpdateChecker {
         NSWorkspace.shared.open(available.url)
     }
 
+    /// Update Now: installs `available` over this copy, then restarts into it. A failure is shown in the
+    /// update window (with the release page as the way out); the installed copy is left untouched.
+    func install() {
+        guard let release = available, installState != .installing else { return }
+        markSeen()
+        installState = .installing
+        Task {
+            do {
+                try await installer(release)
+                restart()
+            } catch {
+                NSLog("[Tic] update install failed: \(error)")
+                installState = .failed((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)
+            }
+        }
+    }
+
+    /// Forgets a failed attempt when the update window closes, so it opens fresh next time.
+    func clearFailure() {
+        if case .failed = installState { installState = .idle }
+    }
+
+    nonisolated static func installOverRunningApp(_ release: Release) async throws {
+        try await UpdateInstaller().install(version: release.version, replacing: Bundle.main.bundleURL)
+    }
+
+    static func relaunch() {
+        UpdateInstaller.relaunchAfterExit(Bundle.main.bundleURL)
+        NSApp.terminate(nil)
+    }
+
     func markSeen() {
         guard let available else { return }
         isUnseen = false
@@ -141,27 +199,38 @@ final class UpdateChecker {
 
     // MARK: - GitHub
 
-    private struct LatestRelease: Decodable {   // snake_case keys: tag_name, html_url
+    private struct GitHubRelease: Decodable {   // snake_case keys: tag_name, html_url, published_at
         let tagName: String
         let htmlUrl: URL
+        let body: String?
+        let publishedAt: Date?
+        let draft: Bool
+        let prerelease: Bool
+
+        var version: String { tagName.hasPrefix("v") ? String(tagName.dropFirst()) : tagName }
     }
 
-    /// `releases/latest` already excludes drafts and pre-releases.
     nonisolated static func fetchLatest() async throws -> Release {
-        var request = URLRequest(url: latestReleaseURL)
+        var request = URLRequest(url: releasesURL)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         let (data, _) = try await URLSession.shared.data(for: request)
         return try parse(data)
     }
 
-    /// Decodes the `releases/latest` payload, stripping the tag's leading "v".
+    /// Decodes the releases list: the newest published (non-draft, non-pre-release) version, plus the
+    /// notes of every published release, newest first. Tags lose their leading "v".
     nonisolated static func parse(_ data: Data) throws -> Release {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
-        let latest = try decoder.decode(LatestRelease.self, from: data)
-        var version = latest.tagName
-        if version.hasPrefix("v") { version.removeFirst() }
-        return Release(version: version, url: latest.htmlUrl)
+        decoder.dateDecodingStrategy = .iso8601
+        let published = try decoder.decode([GitHubRelease].self, from: data)
+            .filter { !$0.draft && !$0.prerelease }
+            .sorted { isNewer($0.version, than: $1.version) }
+        guard let latest = published.first else { throw URLError(.cannotParseResponse) }
+        return Release(
+            version: latest.version, url: latest.htmlUrl,
+            notes: published.map { ReleaseNotes.parse(version: $0.version, date: $0.publishedAt, body: $0.body ?? "") }
+        )
     }
 
     // MARK: - Banner
@@ -193,5 +262,36 @@ final class UpdateChecker {
         } catch {
             NSLog("[Tic] update notification failed: \(error)")
         }
+    }
+}
+
+/// One release's notes, as git-cliff writes them: `### Features`-style headings over
+/// `- *(scope)* Message` bullets. The scope is dropped; it means something to the code, not to users.
+struct ReleaseNotes: Sendable, Equatable, Identifiable {
+    struct Section: Sendable, Equatable {
+        let title: String
+        var items: [String]
+    }
+
+    let version: String
+    let date: Date?
+    let sections: [Section]
+
+    var id: String { version }
+
+    static func parse(version: String, date: Date?, body: String) -> ReleaseNotes {
+        var sections: [Section] = []
+        for raw in body.split(separator: "\n") {
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            if line.hasPrefix("### ") {
+                sections.append(Section(title: String(line.dropFirst(4)), items: []))
+            } else if line.hasPrefix("- ") {
+                var item = Substring(line.dropFirst(2))
+                if item.hasPrefix("*("), let end = item.range(of: ")* ") { item = item[end.upperBound...] }
+                if sections.isEmpty { sections.append(Section(title: "", items: [])) }
+                sections[sections.count - 1].items.append(String(item))
+            }
+        }
+        return ReleaseNotes(version: version, date: date, sections: sections)
     }
 }
