@@ -36,6 +36,8 @@ export const site = {
   keywords: ['to-do list', 'sticky notes', 'Stickies alternative', 'desktop checklist', 'task manager', 'macOS', 'open source', 'MCP', 'AI agent'],
   repo: 'https://github.com/kasvith/tic',
   download: 'https://github.com/kasvith/tic/releases/latest',
+  // curl doesn't add the quarantine flag a browser download gets, so this skips the Gatekeeper block.
+  install: 'curl -fsSL https://tic.kasvith.me/install.sh | sh',
   changelog: 'https://github.com/kasvith/tic/blob/main/CHANGELOG.md',
   productHunt: 'https://www.producthunt.com/products/tic?utm_source=badge-follow&utm_medium=badge&utm_source=badge-tic',
   author: { name: 'Kasun Vithanage', url: 'https://kasvith.me', github: 'https://github.com/kasvith' },
@@ -182,7 +184,11 @@ export const faqs = [
   },
   {
     q: 'macOS says Tic can’t be opened. What do I do?',
-    a: 'Tic isn’t notarized by Apple yet, so Gatekeeper blocks the first launch. Move Tic.app to Applications and run xattr -c /Applications/Tic.app in Terminal, or right-click the app, choose Open, then Open again.',
+    a: `Tic isn’t notarized by Apple yet, so Gatekeeper blocks the first launch of a copy downloaded in a browser. Install it with the Terminal command instead, ${site.install}, and it opens straight away. If you already downloaded the .dmg, move Tic.app to Applications and run xattr -c /Applications/Tic.app in Terminal.`,
+  },
+  {
+    q: 'How do I update Tic?',
+    a: `Run the install command again: ${site.install}. It replaces the old copy and reopens Tic, with your lists untouched. Tic also shows Update Available in its menu bar menu when a new version is out.`,
   },
   {
     q: 'Where are my lists stored?',

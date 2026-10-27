@@ -32,8 +32,12 @@ jobs:
       - name: Package Tic.app
         run: VERSION="${GITHUB_REF_NAME#v}" ./scripts/package.sh
 
+      # A stable name, so releases/latest/download/Tic.zip always resolves (install.sh, the in-app
+      # updater), plus a checksum both of them verify.
       - name: Zip the app
-        run: ditto -c -k --keepParent dist/Tic.app "dist/Tic-${GITHUB_REF_NAME}.zip"
+        run: |
+          ditto -c -k --keepParent dist/Tic.app dist/Tic.zip
+          (cd dist && shasum -a 256 Tic.zip > Tic.zip.sha256)
 
       - name: Build DMG
         run: |
@@ -53,7 +57,8 @@ jobs:
           body_path: RELEASE_NOTES.md
           files: |
             dist/Tic-${{ github.ref_name }}.dmg
-            dist/Tic-${{ github.ref_name }}.zip
+            dist/Tic.zip
+            dist/Tic.zip.sha256
 
   changelog:
     name: Update CHANGELOG.md

@@ -6,3 +6,8 @@
   Referrer-Policy: strict-origin-when-cross-origin
   X-Frame-Options: DENY
   Permissions-Policy: camera=(), microphone=(), geolocation=()
+
+# Show the script when opened in a browser (instead of downloading it), and let fixes reach users fast.
+/install.sh
+  Content-Type: text/plain; charset=utf-8
+  Cache-Control: public, max-age=300
