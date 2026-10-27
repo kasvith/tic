@@ -32,7 +32,7 @@ export const site = {
   description:
     'Tic is a free, open-source Mac app that keeps your to-do lists on the desktop as floating sticky notes, with subtasks, Markdown and keyboard shortcuts.',
   summary:
-    'Tic is a free, open-source macOS app that keeps to-do lists on the desktop as floating, Stickies-style sticky notes instead of hiding them behind a menu bar. Each list is its own small window with subtasks, inline Markdown, pasted images, solid or glass styles and keyboard shortcuts. It needs macOS 14 Sonoma or later.',
+    'Tic is a free, open-source macOS app that keeps to-do lists on the desktop as floating, Stickies-style sticky notes instead of hiding them behind a menu bar. Each list is its own small window with subtasks, inline Markdown, pasted images, solid or glass styles and keyboard shortcuts. It needs macOS 14 Sonoma or later on an Apple silicon Mac.',
   keywords: ['to-do list', 'sticky notes', 'Stickies alternative', 'desktop checklist', 'task manager', 'macOS', 'open source', 'MCP', 'AI agent'],
   repo: 'https://github.com/kasvith/tic',
   download: 'https://github.com/kasvith/tic/releases/latest',
@@ -180,7 +180,7 @@ export const faqs = [
   },
   {
     q: 'Which version of macOS do I need?',
-    a: 'macOS 14 Sonoma or later. Glass notes use Liquid Glass automatically on macOS 26.',
+    a: 'macOS 14 Sonoma or later, on a Mac with Apple silicon. Glass notes use Liquid Glass automatically on macOS 26.',
   },
   {
     q: 'macOS says Tic can’t be opened. What do I do?',

@@ -1,0 +1,40 @@
+---
+// The two ways to install Tic, as a small tabbed card: the Terminal command (recommended: curl adds no
+// quarantine flag, so the unsigned app just opens) or the .dmg plus its one-time `xattr`. The tabs and the
+// Copy button reuse Landing's click handler (`data-set` on `data-target`, `data-copy`), so the card has to
+// live on a page that includes that script.
+import Icon from './Icon.astro';
+import { site } from '../data/site';
+
+interface Props {
+  id: string;
+  version?: string;
+  class?: string;
+}
+const { id, version, class: className } = Astro.props;
+const tab = 'rounded-lg px-3.5 py-2 text-sm font-semibold text-muted transition hover:text-fg aria-pressed:bg-white aria-pressed:text-fg aria-pressed:shadow-sm';
+const code = 'whitespace-nowrap font-mono text-[0.92em] text-fg';
+---
+
+<div id={id} data-install="terminal" class:list={['group w-full max-w-xl rounded-2xl bg-surface p-3.5 ring-1 ring-line', className]}>
+  <div role="group" aria-label="How to install" class="inline-flex flex-wrap gap-1 rounded-xl bg-bg p-1">
+    <button type="button" data-set="install=terminal" data-target={id} aria-pressed="true" class={tab}>Terminal<span class="max-sm:hidden"> · recommended</span></button>
+    <button type="button" data-set="install=download" data-target={id} aria-pressed="false" class={tab}>Download .dmg</button>
+  </div>
+
+  <div class="group-data-[install=download]:hidden">
+    <div class="mt-3.5 flex items-center gap-3 rounded-xl bg-[#1e2027] py-2 pl-3.5 pr-2 font-mono text-[13.5px] text-white max-sm:flex-col max-sm:items-stretch max-sm:p-3.5">
+      <code class="flex-1 [overflow-wrap:anywhere]"><span class="text-[#7fd99a]" aria-hidden="true">$ </span>{site.install}</code>
+      <button type="button" data-copy={site.install} class="shrink-0 rounded-lg bg-accent px-3.5 py-2 font-sans text-sm font-semibold text-on-accent transition hover:brightness-110 max-sm:min-h-11">Copy</button>
+    </div>
+    <p class="mt-3 px-0.5 text-muted">Paste it into Terminal. Tic installs and opens; run it again to update.</p>
+  </div>
+
+  <div class="hidden group-data-[install=download]:block">
+    <div class="mt-3.5 flex flex-wrap items-center gap-x-4 gap-y-2">
+      <a href={site.download} class="inline-flex items-center gap-2 rounded-xl bg-accent px-5 py-3 font-semibold text-on-accent transition hover:brightness-110"><Icon name="download-simple" class="size-5" />Download for Mac</a>
+      <span class="text-sm text-muted">.dmg from GitHub{version && ` · v${version}`}</span>
+    </div>
+    <p class="mt-3 px-0.5 text-muted">Tic isn’t notarized yet, so after moving it to Applications run <code class={code}>xattr -c /Applications/Tic.app</code> once in Terminal.</p>
+  </div>
+</div>

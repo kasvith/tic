@@ -34,7 +34,7 @@ bar click — glance at them, check things off, drag them around. Each note is i
 
 ## Requirements
 
-macOS **14 (Sonoma)** or later.
+macOS **14 (Sonoma)** or later, on Apple silicon.
 
 ## Install
 
