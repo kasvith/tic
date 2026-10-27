@@ -124,7 +124,8 @@ private struct MenuBarContent: View {
 
         if let title = model.updates.menuTitle {
             Divider()
-            Button(title) { model.updates.openReleasePage() }
+            Button(title) { model.openUpdate() }
+                .disabled(model.updates.installState == .installing)
         }
 
         Divider()
