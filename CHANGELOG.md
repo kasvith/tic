@@ -2,6 +2,14 @@
 
 All notable changes to Tic are documented here.
 
+## [0.9.0] - 2026-10-27
+
+### Features
+
+- *(install)* One-command install and update script
+- *(update)* Install updates in-app, with what's new since your version
+- *(site)* Put the install command in the hero
+
 ## [0.8.0] - 2026-10-26
 
 ### Features
