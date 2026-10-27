@@ -20,6 +20,11 @@ open Package.swift          # opens the package in Xcode for GUI editing / previ
 
 - **Landing page** (tic.kasvith.me) is a self-contained Astro + pnpm project in `site/` — all Node
   tooling stays there (see `site/README.md`); never add JS files to the repo root.
+- **Install/update script**: `site/public/install.sh`, served as
+  `curl -fsSL https://tic.kasvith.me/install.sh | sh`. curl adds no quarantine flag (browsers do), so
+  the unsigned app opens without Gatekeeper's block. It verifies `Tic.zip.sha256` and quits only the
+  app process (the `pgrep -f` pattern is anchored, so `Tic --mcp` helpers and their wrappers survive).
+  Test it with `TIC_DEST=<tmp dir>` and a stub `open` first on `PATH`.
 - **Verification** is a clean `swift build`, `swift test` (Swift Testing — `AppDatabaseTests`,
   `TaskOutlineTests`, `NoteColorTests`, `TaskImageTests`, …), plus running the app. The outline logic lives in pure,
   testable functions (`TaskOutline`) precisely so it can be covered without a DB or the main actor.
@@ -35,7 +40,9 @@ open Package.swift          # opens the package in Xcode for GUI editing / previ
   no separate library). `Assets/` holds source icon art (AppIcon / Flat / MenuBar); the menu-bar
   glyph is also copied to `Sources/Tic/Resources/MenuBarIcon.png` and bundled via SwiftPM.
 - **CI/Release:** `.github/workflows/` — `ci.yml` (build + test + lint) and `release.yml` (push a
-  `v*` tag → builds `Tic.app`, git-cliff release notes, publishes a GitHub Release, commits the
+  `v*` tag → builds `Tic.app`, git-cliff release notes, publishes a GitHub Release (versioned DMG +
+  a stable-named `Tic.zip` and `Tic.zip.sha256`, which `releases/latest/download/…` always resolves),
+  commits the
   regenerated `CHANGELOG.md` to main, then POSTs the `CF_DEPLOY_HOOK` secret so the site's
   What's new rebuilds — that commit is `[skip ci]`, which Cloudflare honours).
 - To launch headlessly for a no-crash smoke check (the GUI can't be screenshotted from a

@@ -38,17 +38,27 @@ macOS **14 (Sonoma)** or later.
 
 ## Install
 
-1. Download `Tic-vX.Y.Z.zip` from the [latest release](https://github.com/kasvith/tic/releases),
-   unzip it, and move **`Tic.app`** to `/Applications`.
-2. Tic isn't code-signed/notarized (it's ad-hoc signed), so Gatekeeper will block it on first
-   launch. Clear the quarantine flag:
+Paste this in Terminal:
 
-   ```sh
-   xattr -c /Applications/Tic.app
-   ```
+```sh
+curl -fsSL https://tic.kasvith.me/install.sh | sh
+```
 
-   Then open it normally. (Alternatively: right-click `Tic.app` → **Open** → **Open**.)
-3. To have Tic open automatically, enable **Launch at Login** from its menu-bar menu.
+It installs Tic to `/Applications` (or `~/Applications` on a non-admin account) and opens it. Run it
+again any time to update. Tic isn't notarized, and macOS adds a quarantine flag to apps downloaded in
+a browser, which makes Gatekeeper block the first launch; `curl` doesn't add that flag, so this
+just works. The script is short and readable: [`site/public/install.sh`](site/public/install.sh).
+
+**Or download it by hand:** get the `.dmg` from the
+[latest release](https://github.com/kasvith/tic/releases/latest), move **`Tic.app`** to
+`/Applications`, then clear the quarantine flag once:
+
+```sh
+xattr -c /Applications/Tic.app
+```
+
+(Alternatively: right-click `Tic.app` → **Open** → **Open**.) To have Tic open automatically, enable
+**Launch at Login** from its menu-bar menu.
 
 ## Build from source
 
