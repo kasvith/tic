@@ -3,6 +3,7 @@ import Site from '../layouts/Site.astro';
 import Note, { type Task } from './Note.astro';
 import Palette from './Palette.astro';
 import Icon from './Icon.astro';
+import InstallCard from './InstallCard.astro';
 import { site, release, features, shortcuts, faqs, welcomeTasks, weekTasks, groceryTasks, agentTasks, agentChat, mcpClients } from '../data/site';
 import { competitors, comparePath } from '../data/compare';
 
@@ -110,15 +111,13 @@ const kbd = 'inline-grid min-w-8 place-items-center rounded-md bg-surface px-2 p
           <span>To-do lists that live on your Mac desktop</span>
         </h1>
         <p class="mt-5 max-w-xl leading-relaxed text-muted text-pretty sm:mt-7 sm:text-lg">{lede}</p>
-        <div class="mt-7 flex flex-wrap gap-3 sm:mt-9">
-          <a href={site.download} class:list={[btn, 'max-sm:w-full']}><Icon name="download-simple" class="size-5" />Download for Mac</a>
-          <a href={site.repo} class:list={[btnGhost, 'max-sm:w-full']}><Icon name="github-logo" class="size-5" />View source on GitHub</a>
-        </div>
+        <InstallCard id="install-hero" version={release?.version} class="mt-7 sm:mt-9" />
+        <a href={site.repo} class="mt-4 flex w-fit items-center gap-2 font-semibold text-muted transition hover:text-fg"><Icon name="github-logo" class="size-5" />View source on GitHub</a>
         <a href="#agents" class="group mt-6 inline-flex items-center gap-2 rounded-full bg-accent/10 px-3.5 py-1.5 text-sm font-semibold text-accent ring-1 ring-accent/20 transition hover:bg-accent/15 max-sm:w-full max-sm:justify-center">
           <Icon name="sparkle-fill" class="size-4" />New — let Claude, Cursor &amp; AI agents draft your lists
           <Icon name="arrow-right" class="size-4 transition group-hover:translate-x-0.5" />
         </a>
-        <p class="mt-5 text-sm text-muted">Free and open source{release && `, version ${release.version}`}. Needs macOS 14 Sonoma or later.</p>
+        <p class="mt-5 text-sm text-muted">Free and open source{release && `, version ${release.version}`}. Needs macOS 14 Sonoma or later on Apple silicon.</p>
         <a href={site.productHunt} target="_blank" rel="noopener" class="mt-6 flex w-fit max-sm:mx-auto">
           <img src="https://api.producthunt.com/widgets/embed-image/v1/follow.svg?product_id=1317575&theme=light" alt="Tic - To-do lists that live on your desktop, not in a menu bar | Product Hunt" width="250" height="54" decoding="async" />
         </a>
@@ -306,24 +305,13 @@ Groceries</code></pre>
 
     <section id="install" class="mx-auto max-w-6xl scroll-mt-8 px-5 py-12 sm:py-20">
       <h2 class={h2}>Install Tic</h2>
-      <ol class="mt-8 grid gap-8 sm:mt-12 md:grid-cols-3 md:gap-10">
-        <li>
-          <h3 class="text-lg font-semibold">1. Paste in Terminal</h3>
-          <div class="mt-3 flex items-center gap-2 rounded-xl bg-[#1e2027] py-2 pl-4 pr-2 font-mono text-sm text-white">
-            <code class="flex-1 overflow-x-auto whitespace-nowrap">{site.install}</code>
-            <button type="button" data-copy={site.install} class="rounded-lg bg-white/10 px-3 py-1.5 font-sans text-xs font-semibold hover:bg-white/20">Copy</button>
-          </div>
-          <p class="mt-3 text-muted">Installs Tic to Applications and opens it. Run it again any time to update.</p>
-        </li>
-        <li>
-          <h3 class="text-lg font-semibold">2. Or download it</h3>
-          <p class="mt-2 text-muted">Get the <code class="text-fg">.dmg</code> from the <a href={site.download} class="text-fg underline underline-offset-4">latest release on GitHub</a> and move Tic.app to Applications. Tic isn’t notarized yet, so a downloaded copy needs its quarantine flag cleared once in Terminal: <code class="text-fg">xattr -c /Applications/Tic.app</code></p>
-        </li>
-        <li>
-          <h3 class="text-lg font-semibold">3. Make your first list</h3>
+      <div class="mt-8 grid items-start gap-8 sm:mt-12 md:grid-cols-[minmax(0,36rem)_1fr] md:gap-12">
+        <InstallCard id="install-card" version={release?.version} />
+        <div>
+          <h3 class="text-lg font-semibold">Then make your first list</h3>
           <p class="mt-2 text-muted">Open Tic and press <kbd class={kbd}>⌘</kbd> <kbd class={kbd}>N</kbd>. Turn on Launch at Login from the menu bar icon to keep your notes there after a restart.</p>
-        </li>
-      </ol>
+        </div>
+      </div>
 
       {release && release.notes.length > 0 && (
         <div class="mt-12 rounded-2xl bg-surface p-6 ring-1 ring-line sm:mt-16 sm:rounded-3xl sm:p-8">
@@ -357,7 +345,7 @@ Groceries</code></pre>
       <img src="/icon.png" alt="Tic app icon" width="112" height="112" loading="lazy" class="mx-auto size-28" />
       <h2 class:list={[h2, 'mx-auto mt-6 max-w-2xl']}>Put your next list on the desktop</h2>
       <div class="mt-8 flex flex-wrap justify-center gap-3">
-        <a href={site.download} class:list={[btn, 'max-sm:w-full']}><Icon name="download-simple" class="size-5" />Download for Mac</a>
+        <a href="#install" class:list={[btn, 'max-sm:w-full']}><Icon name="download-simple" class="size-5" />Install Tic</a>
         <a href={site.repo} class:list={[btnGhost, 'max-sm:w-full']}><Icon name="github-logo" class="size-5" />Star on GitHub</a>
       </div>
     </section>
