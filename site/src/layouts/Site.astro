@@ -4,6 +4,7 @@ import Base from './Base.astro';
 import Icon from '../components/Icon.astro';
 import { site } from '../data/site';
 import { competitors, comparePath } from '../data/compare';
+import { guides, guidePath } from '../data/guides';
 
 interface Props {
   title?: string;
@@ -47,6 +48,31 @@ const { title, description, jsonLd } = Astro.props;
         <a href={site.changelog} class="hover:text-fg">Changelog</a>
       </nav>
       <p class="w-full">Tic vs {competitors.map((c, i) => <>{i > 0 && ' · '}<a href={comparePath(c)} class="hover:text-fg underline underline-offset-4">{c.short}</a></>)}</p>
+      <p class="w-full">Guides: {guides.map((g, i) => <>{i > 0 && ' · '}<a href={guidePath(g)} class="hover:text-fg underline underline-offset-4">{g.h1}</a></>)}</p>
     </div>
   </footer>
 </Base>
+
+<script>
+  // Shared by every page: segmented toggles (`data-set="key=value"` sets `data-key` on `data-target`,
+  // e.g. the install card's tabs) and Copy buttons (`data-copy`).
+  document.addEventListener('click', (event) => {
+    const target = event.target as Element;
+
+    const setter = target.closest<HTMLElement>('[data-set]');
+    if (setter) {
+      const [key, value] = setter.dataset.set!.split('=');
+      document.getElementById(setter.dataset.target!)!.dataset[key] = value;
+      setter.parentElement!.querySelectorAll('[data-set]').forEach((b) => b.setAttribute('aria-pressed', String(b === setter)));
+      return;
+    }
+
+    const copy = target.closest<HTMLButtonElement>('[data-copy]');
+    if (copy) {
+      navigator.clipboard.writeText(copy.dataset.copy!).then(() => {
+        copy.textContent = 'Copied';
+        setTimeout(() => (copy.textContent = 'Copy'), 1500);
+      });
+    }
+  });
+</script>

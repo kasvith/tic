@@ -6,6 +6,7 @@ import Icon from './Icon.astro';
 import InstallCard from './InstallCard.astro';
 import { site, release, features, shortcuts, faqs, welcomeTasks, weekTasks, groceryTasks, agentTasks, agentChat, mcpClients } from '../data/site';
 import { competitors, comparePath } from '../data/compare';
+import { guides, guidePath } from '../data/guides';
 
 const id = (name: string) => `${site.url}/#${name}`;
 const ogImage = { '@type': 'ImageObject', url: `${site.url}/og.png`, width: 1200, height: 630 };
@@ -30,12 +31,13 @@ const jsonLd = {
       '@type': 'SoftwareApplication',
       '@id': id('app'),
       name: site.name,
+      alternateName: ['Tic for Mac', 'Tic sticky notes'],
       url: `${site.url}/`,
       description: site.summary,
       applicationCategory: 'DesktopEnhancementApplication',
       applicationSubCategory: 'To-do list',
       operatingSystem: 'macOS',
-      softwareRequirements: 'macOS 14 Sonoma or later',
+      softwareRequirements: 'macOS 14 Sonoma or later, Apple silicon',
       softwareVersion: release?.version,
       dateModified: release?.date,
       downloadUrl: site.download,
@@ -333,11 +335,12 @@ Groceries</code></pre>
               <Icon name="plus" class="size-5 shrink-0 text-muted transition group-open:rotate-45" />
             </summary>
             <p class="mt-3 leading-relaxed text-muted">{f.a}</p>
+            {f.link && <a href={f.link.href} class="mt-2 inline-flex items-center gap-1.5 font-semibold underline underline-offset-4">{f.link.label}<Icon name="arrow-right" class="size-4" /></a>}
           </details>
         ))}
       </div>
       <p class="mt-6 text-muted">
-        Coming from {competitors.map((c, i) => <>{i > 0 && (i === competitors.length - 1 ? ' or ' : ', ')}<a href={comparePath(c)} class="text-fg underline underline-offset-4">{c.name}</a></>)}? See how Tic compares.
+        Coming from {competitors.map((c, i) => <>{i > 0 && (i === competitors.length - 1 ? ' or ' : ', ')}<a href={comparePath(c)} class="text-fg underline underline-offset-4">{c.name}</a></>)}? See how Tic compares. Guides: {guides.map((g, i) => <>{i > 0 && ' · '}<a href={guidePath(g)} class="text-fg underline underline-offset-4">{g.h1}</a></>)}.
       </p>
     </section>
 
@@ -352,33 +355,14 @@ Groceries</code></pre>
 </Site>
 
 <script>
+  // Ticking a note's tasks (and the headline). Toggles and Copy buttons are handled in Site.astro.
   document.addEventListener('click', (event) => {
-    const target = event.target as Element;
-
-    const check = target.closest('button.cb, button[data-tick]');
-    if (check) {
-      const row = check.closest('.task, .headline-line')!;
-      const done = !row.hasAttribute('data-done');
-      row.toggleAttribute('data-done', done);
-      check.setAttribute('aria-pressed', String(done));
-      return;
-    }
-
-    const setter = target.closest<HTMLElement>('[data-set]');
-    if (setter) {
-      const [key, value] = setter.dataset.set!.split('=');
-      document.getElementById(setter.dataset.target!)!.dataset[key] = value;
-      setter.parentElement!.querySelectorAll('[data-set]').forEach((b) => b.setAttribute('aria-pressed', String(b === setter)));
-      return;
-    }
-
-    const copy = target.closest<HTMLButtonElement>('[data-copy]');
-    if (copy) {
-      navigator.clipboard.writeText(copy.dataset.copy!).then(() => {
-        copy.textContent = 'Copied';
-        setTimeout(() => (copy.textContent = 'Copy'), 1500);
-      });
-    }
+    const check = (event.target as Element).closest('button.cb, button[data-tick]');
+    if (!check) return;
+    const row = check.closest('.task, .headline-line')!;
+    const done = !row.hasAttribute('data-done');
+    row.toggleAttribute('data-done', done);
+    check.setAttribute('aria-pressed', String(done));
   });
 
   // AI-agents section: a looping demo of a person talking to their agent while a Tic note fills in.
