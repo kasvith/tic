@@ -175,7 +175,8 @@ struct ReorderDragTests {
 
     private func rename(_ h: Harness, typing text: String, thenPress key: String, keyCode: UInt16) throws {
         h.controller.requestRename()
-        pump(0.2)
+        // Focus lands a few run-loop turns later (request → field → focus); slower on CI, so wait for it.
+        for _ in 0..<40 where !(h.panel.firstResponder is NSTextView) { pump(0.05) }
         let editor = try #require(h.panel.firstResponder as? NSTextView, "the rename field took the keyboard")
         editor.selectAll(nil)
         editor.insertText(text, replacementRange: editor.selectedRange())
@@ -185,7 +186,7 @@ struct ReorderDragTests {
             isARepeat: false, keyCode: keyCode
         )!
         h.panel.sendEvent(event)
-        pump(0.2)
+        for _ in 0..<40 where h.panel.firstResponder is NSTextView { pump(0.05) }   // the rename ends
     }
 
     #if DEBUG
