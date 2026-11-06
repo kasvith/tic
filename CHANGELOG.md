@@ -2,6 +2,13 @@
 
 All notable changes to Tic are documented here.
 
+## [0.10.0] - 2026-11-06
+
+### Features
+
+- *(site)* How-to guides for Stickies checkboxes and desktop to-do lists, plus llms-full.txt
+- *(notes)* A slimmer roll-up bar that snaps to the bottom, and a one-row header (#19)
+
 ## [0.9.0] - 2026-10-27
 
 ### Features
