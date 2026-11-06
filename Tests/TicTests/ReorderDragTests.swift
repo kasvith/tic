@@ -177,6 +177,10 @@ struct ReorderDragTests {
         h.controller.requestRename()
         // Focus lands a few run-loop turns later (request → field → focus); slower on CI, so wait for it.
         for _ in 0..<40 where !(h.panel.firstResponder is NSTextView) { pump(0.05) }
+        func fields(_ v: NSView) -> [NSView] { (v is NSTextField ? [v] : []) + v.subviews.flatMap(fields) }   // DIAG
+        print("DIAG os=\(ProcessInfo.processInfo.operatingSystemVersionString) key=\(h.panel.isKeyWindow) active=\(NSApp.isActive) "
+              + "fields=\(fields(h.panel.contentView!).map { "\(type(of: $0)) editable=\(($0 as? NSTextField)?.isEditable ?? false)" }) "
+              + "responder=\(h.panel.firstResponder.map { "\(type(of: $0))" } ?? "nil") request=\(h.controller.renameRequest)")   // DIAG
         let editor = try #require(h.panel.firstResponder as? NSTextView, "the rename field took the keyboard")
         editor.selectAll(nil)
         editor.insertText(text, replacementRange: editor.selectedRange())
