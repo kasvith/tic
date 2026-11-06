@@ -19,7 +19,7 @@ export const llmsOverview = (): string[] => [
   `- Install: run \`${site.install}\` in Terminal. It installs Tic to Applications and opens it; running it again updates it. Or download the .dmg from GitHub, then run \`xattr -c /Applications/Tic.app\` once, because Tic isn’t notarized.`,
   '- Updates: from version 0.9.0, Tic shows Update Available in its menu bar menu, lists what’s new since your version, and installs the update itself.',
   '- Data: a local SQLite file at ~/Library/Application Support/Tic/tic.sqlite. Nothing leaves the Mac unless the user turns on sync for a list.',
-  '- Sync between Macs: optional and per list. Tic syncs through a folder the Macs already share (iCloud Drive by default, or Dropbox, Google Drive, OneDrive or Syncthing). No account or server. Which lists are open, and where they sit, stay per Mac.',
+  '- Sync between Macs: optional and per list. Tic syncs through a folder the Macs already share (iCloud Drive by default, or Dropbox, Google Drive, OneDrive or Syncthing). No account or server. Which lists are open, and where they sit, stay per Mac. Marked experimental in the app.',
   '- AI agents: an optional local MCP server lets Claude, Cursor, VS Code, Zed and the Codex or Gemini CLIs create notes, add and tick tasks, and more. Off by default; set up in Settings › AI Agents.',
   '',
   '## What Tic doesn’t do',

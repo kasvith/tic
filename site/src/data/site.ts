@@ -153,9 +153,14 @@ export const features = [
     body: 'Per list, hide completed tasks, sink them to the bottom, or clear them all out when the list gets long.',
   },
   {
+    id: 'sync',
+    title: 'The same lists on your other Mac',
+    body: 'Turn on sync and choose which lists travel. Tic keeps them in step through a folder your Macs already share, such as iCloud Drive or Dropbox, with no account and no server. Each Mac still decides which lists are open and where they sit.',
+  },
+  {
     id: 'private',
     title: 'Private by default',
-    body: 'Your lists live in a SQLite file on your Mac. There’s no account, no server and no tracking.',
+    body: 'Your lists live in a SQLite file on your Mac. There’s no account, no server and no tracking. Lists you sync travel only through a folder you choose.',
   },
 ];
 
@@ -206,7 +211,7 @@ export const faqs = [
   },
   {
     q: 'Does Tic sync between Macs?',
-    a: 'Yes, for the lists you choose. Turn on Sync in Tic’s Settings, then pick which lists sync. Tic syncs through a folder your Macs already share: iCloud Drive by default, or a Dropbox, Google Drive, OneDrive or Syncthing folder. There is no account and no server. Each Mac still decides which lists are open and where they sit. There is no iPhone app.',
+    a: 'Yes, for the lists you choose. Turn on Sync in Tic’s Settings, then pick which lists sync. Tic syncs through a folder your Macs already share: iCloud Drive by default, or a Dropbox, Google Drive, OneDrive or Syncthing folder. There is no account and no server. Each Mac still decides which lists are open and where they sit. There is no iPhone app. Sync is new and still experimental.',
   },
   {
     q: 'Can Tic open when I log in?',
