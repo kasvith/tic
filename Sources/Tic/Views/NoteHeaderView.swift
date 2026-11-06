@@ -280,7 +280,7 @@ extension NoteHeaderView {
 
             VStack(alignment: .leading, spacing: 8) {
                 if listSyncs {
-                    popoverAction("Sync Now", systemImage: "arrow.triangle.2.circlepath") {
+                    popoverAction("Sync Now", systemImage: "arrow.clockwise") {
                         syncPulse += 1
                         sync?.syncNow()
                     }
