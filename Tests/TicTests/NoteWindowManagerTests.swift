@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import Testing
 @testable import Tic
 
@@ -42,5 +43,85 @@ struct NoteWindowManagerTests {
         let tall = CGRect(x: 5000, y: 5000, width: 280, height: 1200)
         let parked = NoteWindowManager.placement(for: tall, screens: [main], main: main)
         #expect(parked.maxY == main.maxY && parked.maxX == main.maxX)
+    }
+
+    // MARK: Roll-up (issue 18)
+
+    private let bar = NoteLayout.collapsedHeight
+
+    @Test("mid-screen: rolls up from the top edge and back to the exact frame")
+    func rollMidScreen() {
+        let note = CGRect(x: 100, y: 300, width: 280, height: 360)
+        let rolled = NoteWindowManager.rolledFrame(note, toHeight: bar, screens: [main])
+        #expect(rolled.maxY == note.maxY && rolled.height == bar)
+        #expect(NoteWindowManager.rolledFrame(rolled, toHeight: note.height, screens: [main]) == note)
+    }
+
+    @Test("parked at the bottom: rolls up flush with it and expands upward")
+    func rollAtBottom() {
+        let note = CGRect(x: 100, y: main.minY + 10, width: 280, height: 360)   // within the snap
+        let rolled = NoteWindowManager.rolledFrame(note, toHeight: bar, screens: [main])
+        #expect(rolled.minY == main.minY && rolled.height == bar)
+        let expanded = NoteWindowManager.rolledFrame(rolled, toHeight: note.height, screens: [main])
+        #expect(expanded.minY == main.minY && expanded.height == note.height)
+    }
+
+    @Test("a low bar expands upward rather than off the bottom; a tall one keeps its header on screen")
+    func expandStaysOnScreen() {
+        let low = CGRect(x: 100, y: 100, width: 280, height: bar)   // above the snap, too low for 360
+        #expect(NoteWindowManager.rolledFrame(low, toHeight: 360, screens: [main]).minY == main.minY)
+        let tall = NoteWindowManager.rolledFrame(low, toHeight: 1200, screens: [main])
+        #expect(tall.maxY == main.maxY)
+    }
+
+    @Test("a bar let go near the bottom glides down flush; one let go higher up stays put")
+    @MainActor func dropSnapsToBottom() async throws {
+        _ = NSApplication.shared
+        let screen = try #require(NSScreen.main?.visibleFrame)
+        let db = try AppDatabase.makeInMemory()
+        let note = Note(isCollapsed: true)
+        try await db.insert(note)
+        let manager = NoteWindowManager(appDatabase: db)
+        let panel = manager.openNote(note, makeKey: false)
+        defer { panel.close() }
+
+        // Where a header drag let go (`NotePanel.performDrag` ends with `onDragEnded`).
+        func drop(atHeight y: CGFloat, dragged: Bool = true) async throws {
+            panel.setFrameOrigin(NSPoint(x: screen.minX + 100, y: screen.minY + y))
+            if dragged { panel.onDragEnded?() }
+            try await Task.sleep(for: .milliseconds(400))   // the whole glide: rounded to points, it lands early
+        }
+        try await drop(atHeight: 30)   // within the snap
+        #expect(panel.frame.minY == screen.minY)
+        try await drop(atHeight: 200)
+        #expect(panel.frame.minY == screen.minY + 200)
+        try await drop(atHeight: 30, dragged: false)   // moved, not dragged by the user: left alone
+        #expect(panel.frame.minY == screen.minY + 30)
+    }
+
+    @Test("a rolled-up bar is frameless and keeps its height; expanding brings the system frame back")
+    @MainActor func barHeightLock() async throws {
+        _ = NSApplication.shared
+        let db = try AppDatabase.makeInMemory()
+        let note = Note(isCollapsed: true)
+        try await db.insert(note)
+        let manager = NoteWindowManager(appDatabase: db)
+        let panel = manager.openNote(note, makeKey: false)
+        defer { panel.close() }
+        // Frameless: no system corners to split from the fill, and no title-bar safe area — the hosting view
+        // grows the window to the bar's minimum height plus that inset, which bounced a titled bar to ~47pt.
+        #expect(!panel.styleMask.contains(.titled) && panel.contentView?.safeAreaInsets.top == 0)
+        #expect(!panel.hasShadow)   // a frameless window's shadow rims the capsule like a dark border
+        #expect(manager.windowWillResize(panel, to: NSSize(width: 320, height: 200)) == NSSize(width: 320, height: bar))
+
+        try await db.updateNoteFlags(id: note.id, floatOnTop: false, showOnAllSpaces: false, isCollapsed: false)
+        // The DB echo, then an animated roll: wait for it rather than a fixed time (parallel suites slow it).
+        for _ in 0..<60 where panel.frame.height <= bar { try await Task.sleep(for: .milliseconds(50)) }
+        #expect(panel.frame.height > bar && panel.styleMask.contains(.titled) && panel.hasShadow)
+        #expect(panel.standardWindowButton(.closeButton)?.isHidden == true)
+        #expect(manager.windowWillResize(panel, to: NSSize(width: 320, height: 200)) == NSSize(width: 320, height: 200))
+        // The content has no minimum height (so it can roll open from a bar): the delegate keeps one.
+        let short = manager.windowWillResize(panel, to: NSSize(width: 320, height: 40))
+        #expect(short.height == NoteLayout.minExpandedHeight)
     }
 }

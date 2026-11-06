@@ -67,7 +67,8 @@ struct ReorderDragTests {
 
     /// Presses on the first row and nudges it so the drag starts; returns where the pointer now is.
     private func pickUpFirstRow(_ h: Harness) throws -> NSPoint {
-        let start = NSPoint(x: 60, y: h.top - 80)
+        // A few points into the first row: below the header (its title row, the rule, 8pt) and the list's 4pt.
+        let start = NSPoint(x: 60, y: h.top - (NoteLayout.collapsedHeight + 20))
         // Never press AppKit text or the header's move area: they run tracking loops that would hang.
         // (SwiftUI's own container class here differs by macOS version, so it can't be matched by name.)
         let hit = try #require(h.panel.contentView?.hitTest(start))
@@ -155,6 +156,36 @@ struct ReorderDragTests {
         #expect(h.order[index + 1] == "A1")      // …and its subtask came along, still nested under it
         #expect(h.controller.tasks[index].indentLevel == 0)
         #expect(h.controller.tasks[index + 1].indentLevel == 1)
+    }
+
+    @Test("the title is part of the drag handle; a rename (⋯ › Rename…, a new list) saves on Return, not Esc")
+    func renameFlow() async throws {
+        let h = try await makeHarness()
+        defer { h.panel.orderOut(nil) }
+        // Not a click target of its own: there, in the window's hidden title-bar strip, a double-click zoomed it.
+        let title = NSPoint(x: 30, y: h.top - NoteLayout.collapsedHeight / 2)
+        #expect(h.panel.contentView?.hitTest(title) is WindowMoveArea.MoveView)
+
+        try rename(h, typing: "Groceries", thenPress: "\r", keyCode: 36)
+        #expect(h.controller.note.title == "Groceries")
+        try rename(h, typing: "Oops", thenPress: "\u{1b}", keyCode: 53)
+        #expect(h.controller.note.title == "Groceries")
+        #expect(!(h.panel.firstResponder is NSText), "the rename ended")
+    }
+
+    private func rename(_ h: Harness, typing text: String, thenPress key: String, keyCode: UInt16) throws {
+        h.controller.requestRename()
+        pump(0.2)
+        let editor = try #require(h.panel.firstResponder as? NSTextView, "the rename field took the keyboard")
+        editor.selectAll(nil)
+        editor.insertText(text, replacementRange: editor.selectedRange())
+        let event = NSEvent.keyEvent(
+            with: .keyDown, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: h.panel.windowNumber, context: nil, characters: key, charactersIgnoringModifiers: key,
+            isARepeat: false, keyCode: keyCode
+        )!
+        h.panel.sendEvent(event)
+        pump(0.2)
     }
 
     #if DEBUG

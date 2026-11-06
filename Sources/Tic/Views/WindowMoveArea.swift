@@ -26,12 +26,25 @@ struct WindowMoveArea: NSViewRepresentable {
         @available(*, unavailable)
         required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
+        /// A press that hasn't moved yet. The window drag starts only once it does, so a click or a
+        /// double-click (roll-up) never counts as a drag — a note snaps when one is let go.
+        private var pendingPress: NSEvent?
+
         override func mouseDown(with event: NSEvent) {
+            pendingPress = nil
             if event.clickCount == 2 {
                 onDoubleClick()
                 return
             }
-            window?.performDrag(with: event)   // begin a window-move drag loop
+            pendingPress = event
         }
+
+        override func mouseDragged(with event: NSEvent) {
+            guard let press = pendingPress else { return }
+            pendingPress = nil
+            window?.performDrag(with: press)   // a note's own drag (`NotePanel`), else the system's
+        }
+
+        override func mouseUp(with event: NSEvent) { pendingPress = nil }
     }
 }

@@ -3,8 +3,11 @@ import SwiftUI
 
 /// Shared layout constants so the SwiftUI collapsed bar and the AppKit window resize agree.
 enum NoteLayout {
-    /// Height of a rolled-up note (shows only its title bar).
-    static let collapsedHeight: CGFloat = 44
+    /// Height of a rolled-up note — exactly its header's top row (a capsule it draws itself — see
+    /// `NotePanel.setRolledUp`).
+    static let collapsedHeight: CGFloat = 34
+    /// The shortest an open note can be resized to (`NoteWindowManager.windowWillResize`).
+    static let minExpandedHeight: CGFloat = 160
     /// Horizontal inset added per nesting level, so subtasks step to the right of their parent.
     static let indentStep: CGFloat = 20
     /// Horizontal inset of task rows from the note's edges — room for the drag grip and the drop
@@ -37,6 +40,7 @@ struct NoteView: View {
 
     @State private var titleText: String
     @State private var revealed = false
+    @State private var atBarHeight = false
     @State private var drag: ReorderDrag
     // True while a reorder gesture is live. SwiftUI resets it when the gesture ends *or is cancelled*;
     // a cancel never reaches `onEnded`, so this is what puts the task back instead of leaving it lifted.
@@ -78,64 +82,40 @@ struct NoteView: View {
     }
 
     var body: some View {
-        Group {
-            if note.isCollapsed {
-                collapsedBar
-            } else {
-                expandedBody
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(NoteBackground(color: note.color, material: note.material))
-        .ignoresSafeArea()
-        .onHover { hovering in
-            withAnimation(.easeInOut(duration: 0.15)) { revealed = hovering }
-        }
-    }
-
-    // MARK: - Collapsed bar
-
-    private var collapsedBar: some View {
-        let remaining = controller.tasks.filter { !$0.isDone }.count
-        return HStack(spacing: 8) {
-            Text(note.title.isEmpty ? "Untitled List" : note.title)
-                .font(.headline.weight(.semibold))
-                .foregroundStyle(theme.title)
-                .lineLimit(1)
-
-            Spacer(minLength: 8)
-
-            if remaining > 0 {
-                Text("\(remaining)")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(theme.secondary)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 2)
-                    .background(Capsule().fill(theme.accent.opacity(0.18)))
-            }
-        }
-        .padding(.horizontal, 16)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        .allowsHitTesting(false)   // let the drag handle below receive all clicks
-        .background(WindowMoveArea { controller.toggleCollapsed() })
-        .help("Drag to move · double-click to expand")
-    }
-
-    // MARK: - Expanded body
-
-    private var expandedBody: some View {
         VStack(alignment: .leading, spacing: 0) {
             NoteHeaderView(
                 controller: controller,
                 theme: theme,
                 isRevealed: revealed,
+                isRolledUp: showsBar,
                 titleText: $titleText,
                 titleFocused: $titleFocused
             )
-            taskList
-            QuickAddBar(controller: controller, theme: theme)
+            // Rolled up, the header's top row is all that's left: the window closes over the rest like a
+            // shade, and the list leaves only once it's shut, so nothing moves and nothing hidden keeps focus.
+            if !showsBar {
+                taskList
+                QuickAddBar(controller: controller, theme: theme)
+            }
         }
+        // `minHeight: 0`: the window opens from a bar, and the hosting view won't let it be shorter than the
+        // content's minimum — it jumped straight to ~150pt. The resize delegate keeps open notes taller.
+        .frame(maxWidth: .infinity, minHeight: 0, maxHeight: .infinity, alignment: .topLeading)
+        .onGeometryChange(for: Bool.self) { $0.size.height <= NoteLayout.collapsedHeight + 0.5 } action: {
+            atBarHeight = $0
+        }
+        .background(NoteBackground(
+            color: note.color, material: note.material,
+            cornerRadius: note.isCollapsed ? NoteLayout.collapsedHeight / 2 : 0
+        ))
+        .background(HoverArea { hovering in
+            withAnimation(.easeInOut(duration: 0.15)) { revealed = hovering }
+        })
+        .ignoresSafeArea()
     }
+
+    /// Rolled up and done rolling: the window is down to the bar.
+    private var showsBar: Bool { note.isCollapsed && atBarHeight }
 
     // MARK: - Task list
 
