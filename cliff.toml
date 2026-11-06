@@ -42,6 +42,9 @@ commit_parsers = [
   { sha = "b072622509f18d8494b383b360e1ce81351c4a39", skip = true },
   { sha = "1440563ed24b7f4a70fc38ebbfb8761750b8eda6", skip = true },
   { sha = "54afbcee9dba3be7599c1ccd22f46e9d11eb047d", skip = true },
+  # The landing site (site/) deploys on its own (Cloudflare, from main): its changes aren't part of an
+  # app release, so they stay out of the release notes, CHANGELOG.md and the in-app "what's new".
+  { message = "^[a-z]+\\(site\\)", skip = true },
   { message = "^feat", group = "<!-- 0 -->Features" },
   { message = "^fix", group = "<!-- 1 -->Bug Fixes" },
   { message = "^perf", group = "<!-- 2 -->Performance" },
