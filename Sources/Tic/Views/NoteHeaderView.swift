@@ -279,18 +279,18 @@ extension NoteHeaderView {
             Divider()
 
             VStack(alignment: .leading, spacing: 8) {
-                if listSyncs {
-                    popoverAction("Sync Now", systemImage: "arrow.clockwise") {
-                        syncPulse += 1
-                        sync?.syncNow()
-                    }
-                }
                 popoverAction("New List", systemImage: "plus") { controller.requestNewNote() }
                 // A "tidy up" wand rather than a trash can — this clears finished items, it isn't a delete.
                 let done = controller.completedCount
                 popoverAction(done > 0 ? "Clean Up \(done) Completed…" : "Clean Up Completed…",
                               systemImage: "wand.and.sparkles") { showClearConfirm = true }
                     .disabled(done == 0)
+                if listSyncs {
+                    popoverAction("Sync Now", systemImage: "arrow.clockwise") {
+                        syncPulse += 1
+                        sync?.syncNow()
+                    }
+                }
             }
         }
         .font(.callout)
