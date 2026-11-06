@@ -2,6 +2,12 @@
 
 All notable changes to Tic are documented here.
 
+## [0.11.0] - 2026-11-06
+
+### Features
+
+- *(sync)* Sync the lists you choose between Macs through a shared folder, and a Settings window (#21)
+
 ## [0.10.0] - 2026-11-06
 
 ### Features
