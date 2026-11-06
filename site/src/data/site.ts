@@ -208,6 +208,7 @@ export const faqs = [
   {
     q: 'Can AI agents add tasks to Tic?',
     a: 'Yes. Turn it on in Tic’s Settings, under AI Agents, and agents like Claude, Cursor, VS Code, Zed and the Codex or Gemini CLIs can create notes, draft tasks, tick them off and more. The same tab gives you a one-click or copy-paste setup for each. It is off by default and runs entirely on your Mac.',
+    link: { href: '/guides/claude-to-do-list-mac/', label: 'How to set it up with Claude' },
   },
   {
     q: 'Does Tic sync between Macs?',
