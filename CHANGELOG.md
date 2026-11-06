@@ -6,7 +6,6 @@ All notable changes to Tic are documented here.
 
 ### Features
 
-- *(site)* How-to guides for Stickies checkboxes and desktop to-do lists, plus llms-full.txt
 - *(notes)* A slimmer roll-up bar that snaps to the bottom, and a one-row header (#19)
 
 ## [0.9.0] - 2026-10-27
@@ -15,7 +14,6 @@ All notable changes to Tic are documented here.
 
 - *(install)* One-command install and update script
 - *(update)* Install updates in-app, with what's new since your version
-- *(site)* Put the install command in the hero
 
 ## [0.8.0] - 2026-10-26
 
@@ -41,15 +39,10 @@ All notable changes to Tic are documented here.
 - *(mcp)* Full note+task tools with live UI updates
 - *(mcp)* Setup window + menu item with per-client install snippets
 - *(mcp)* Image tools + one-click Cursor/VS Code install deeplinks
-- *(site)* Add an "AI agents" section for MCP, with a live-fill animation
-- *(site)* Typing-chatbox conversation demo for the AI agents section
-- *(site)* MCP as a feature in the list, with a real agent-UI demo
 
 ### Bug Fixes
 
 - *(mcp)* Surface agent-written notes; add focus_note to jump to one
-- *(site)* Typing indicator no longer shifts the chat layout
-- *(site)* Order-safe agent animation + seat the note on Tic's desktop
 
 ## [0.6.0] - 2026-09-16
 
