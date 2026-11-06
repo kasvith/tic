@@ -48,7 +48,7 @@ private func averageColor(_ image: CGImage) -> (red: UInt8, blue: UInt8) {
 }
 
 private func firstCrops(_ db: AppDatabase, _ noteId: UUID) async throws -> [UUID: CGRect] {
-    for try await crops in db.observeTaskImageCrops(noteId: noteId) { return crops }
+    for try await images in db.observeTaskImageCrops(noteId: noteId) { return images.mapValues(\.crop) }
     return [:]
 }
 

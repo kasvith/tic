@@ -15,6 +15,7 @@ final class AppModel {
     let database: AppDatabase
     let windows: NoteWindowManager
     let updates = UpdateChecker()
+    let sync: FolderSync
     @ObservationIgnored private let mcp: MCPService
 
     /// All saved notes (ascending `sortIndex`, i.e. creation order) — drives the menu bar list.
@@ -23,7 +24,6 @@ final class AppModel {
 
     @ObservationIgnored private var notesObservation: Task<Void, Never>?
     @ObservationIgnored private var searchWindow: NSWindow?
-    @ObservationIgnored private var mcpWindow: NSWindow?
     @ObservationIgnored private var updateWindow: NSWindow?
 
     private init() {
@@ -35,6 +35,9 @@ final class AppModel {
         self.database = db
         self.windows = NoteWindowManager(appDatabase: db)
         self.mcp = MCPService(database: db)
+        let support = (try? AppDatabase.supportDirectory()) ?? FileManager.default.temporaryDirectory
+        self.sync = FolderSync(database: db, stateURL: support.appendingPathComponent("sync-state.json"))
+        windows.sync = sync
         NSLog("[Tic] Database ready at \(db.path)")
         mcp.onConnectionCountChange = { [weak self] count in
             Task { @MainActor in self?.mcpConnections = count }
@@ -46,6 +49,10 @@ final class AppModel {
             setFrame: { [weak self] id, rect in await self?.windows.setFrame(id, to: rect) },
             focus: { [weak self] id in await self?.windows.focusNoteByID(id) }
         )
+        // A list deleted on another Mac is already gone from the database; take its panel down.
+        sync.onNotesDeleted = { [weak self] ids in
+            for id in ids { Task { await self?.windows.closeNoteByID(id) } }
+        }
     }
 
     /// Run once after launch: open saved note panels, then start streaming the notes list.
@@ -55,6 +62,7 @@ final class AppModel {
         applyLaunchAtLogin(launchAtLogin)   // honor the saved preference (effective when packaged)
         if mcpEnabled { applyMCPEnabled(true) }
         updates.start()
+        sync.start()
     }
 
     private func startObservingNotes() {
@@ -90,6 +98,11 @@ final class AppModel {
         NSApp.activate()
     }
 
+    /// Whether a list syncs with the user's other Macs (Settings › Sync's list of lists).
+    func setSynced(_ note: Note, _ on: Bool) {
+        Task { [database] in try? await database.updateNoteSynced(id: note.id, isSynced: on) }
+    }
+
     /// Permanently delete a note (and its tasks, via the FK cascade). Removed from the list
     /// immediately so it can't be reopened during the async delete; the observation confirms.
     func delete(_ note: Note) {
@@ -107,8 +120,8 @@ final class AppModel {
         searchWindow.map(present)
     }
 
-    /// A borderless-looking floating panel hosting `content` — the shared shell of the Lists palette,
-    /// the MCP setup window and the update window. Created once and reused.
+    /// A borderless-looking floating panel hosting `content` — the shared shell of the Lists palette
+    /// and the update window. Created once and reused.
     private static func floatingPanel(width: CGFloat, height: CGFloat, content: some View) -> NSPanel {
         let panel = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: width, height: height),
@@ -151,17 +164,6 @@ final class AppModel {
     /// Closes the Lists palette (Escape / pick a list / its close button).
     func dismissSearch() {
         searchWindow?.orderOut(nil)
-    }
-
-    /// Opens the "AI Agents (MCP)" setup window (the toggle + per-client install snippets). A single
-    /// reused, centered, floating panel — same treatment as the Lists palette.
-    func openMCPSetup() {
-        if mcpWindow == nil { mcpWindow = Self.floatingPanel(width: 680, height: 460, content: MCPSetupView()) }
-        mcpWindow.map(present)
-    }
-
-    func dismissMCPSetup() {
-        mcpWindow?.orderOut(nil)
     }
 
     /// Opens the update window (what's new since this version, then Update Now / Later) from the

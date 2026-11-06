@@ -153,9 +153,14 @@ export const features = [
     body: 'Per list, hide completed tasks, sink them to the bottom, or clear them all out when the list gets long.',
   },
   {
+    id: 'sync',
+    title: 'The same lists on your other Mac',
+    body: 'Turn on sync and choose which lists travel. Tic keeps them in step through a folder your Macs already share, such as iCloud Drive or Dropbox, with no account and no server. Each Mac still decides which lists are open and where they sit.',
+  },
+  {
     id: 'private',
     title: 'Private by default',
-    body: 'Your lists live in a SQLite file on your Mac. There’s no account, no server and no tracking.',
+    body: 'Your lists live in a SQLite file on your Mac. There’s no account, no server and no tracking. Lists you sync travel only through a folder you choose.',
   },
 ];
 
@@ -198,18 +203,19 @@ export const faqs = [
   },
   {
     q: 'Where are my lists stored?',
-    a: 'In a local SQLite database at ~/Library/Application Support/Tic/tic.sqlite. Nothing leaves your Mac.',
+    a: 'In a local SQLite database at ~/Library/Application Support/Tic/tic.sqlite. Nothing leaves your Mac unless you turn on sync for a list.',
   },
   {
     q: 'Can AI agents add tasks to Tic?',
-    a: 'Yes. Turn on the MCP server from the menu bar (AI Agents (MCP)…) and agents like Claude, Cursor, VS Code, Zed and the Codex or Gemini CLIs can create notes, draft tasks, tick them off and more. The window gives you a one-click or copy-paste setup for each. It is off by default and runs entirely on your Mac.',
+    a: 'Yes. Turn it on in Tic’s Settings, under AI Agents, and agents like Claude, Cursor, VS Code, Zed and the Codex or Gemini CLIs can create notes, draft tasks, tick them off and more. The same tab gives you a one-click or copy-paste setup for each. It is off by default and runs entirely on your Mac.',
+    link: { href: '/guides/claude-to-do-list-mac/', label: 'How to set it up with Claude' },
   },
   {
     q: 'Does Tic sync between Macs?',
-    a: 'Not yet. Tic keeps everything local on one Mac for now.',
+    a: 'Yes, for the lists you choose. Turn on Sync in Tic’s Settings, then pick which lists sync. Tic syncs through a folder your Macs already share: iCloud Drive by default, or a Dropbox, Google Drive, OneDrive or Syncthing folder. There is no account and no server. Each Mac still decides which lists are open and where they sit. There is no iPhone app. Sync is new and still experimental.',
   },
   {
     q: 'Can Tic open when I log in?',
-    a: 'Yes. Turn on Launch at Login from the Tic menu in the menu bar.',
+    a: 'Yes. Turn on Launch at Login in Tic’s Settings (⌘,).',
   },
 ];

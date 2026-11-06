@@ -75,6 +75,12 @@ const imageTasks: Task[] = [
   { t: 'Update the <strong>App Store</strong> screenshots' },
   { t: 'Reply to design feedback', done: true },
 ];
+const syncTasks: Task[] = [
+  { t: 'Send slides to Sam', done: true },
+  { t: 'Book train home' },
+  { t: 'Check Friday times', l: 1 },
+  { t: 'Mark essays' },
+];
 const tidyTasks: Task[] = [
   { t: 'Oat milk' },
   { t: 'Coffee beans' },
@@ -115,8 +121,8 @@ const kbd = 'inline-grid min-w-8 place-items-center rounded-md bg-surface px-2 p
         <p class="mt-5 max-w-xl leading-relaxed text-muted text-pretty sm:mt-7 sm:text-lg">{lede}</p>
         <InstallCard id="install-hero" version={release?.version} class="mt-7 sm:mt-9" />
         <a href={site.repo} class="mt-4 flex w-fit items-center gap-2 font-semibold text-muted transition hover:text-fg"><Icon name="github-logo" class="size-5" />View source on GitHub</a>
-        <a href="#agents" class="group mt-6 inline-flex items-center gap-2 rounded-full bg-accent/10 px-3.5 py-1.5 text-sm font-semibold text-accent ring-1 ring-accent/20 transition hover:bg-accent/15 max-sm:w-full max-sm:justify-center">
-          <Icon name="sparkle-fill" class="size-4" />New — let Claude, Cursor &amp; AI agents draft your lists
+        <a href="#sync" class="group mt-6 inline-flex items-center gap-2 rounded-full bg-accent/10 px-3.5 py-1.5 text-sm font-semibold text-accent ring-1 ring-accent/20 transition hover:bg-accent/15 max-sm:w-full max-sm:justify-center">
+          <Icon name="arrows-clockwise" class="size-4" />New — sync your lists between Macs
           <Icon name="arrow-right" class="size-4 transition group-hover:translate-x-0.5" />
         </a>
         <p class="mt-5 text-sm text-muted">Free and open source{release && `, version ${release.version}`}. Needs macOS 14 Sonoma or later on Apple silicon.</p>
@@ -199,13 +205,18 @@ const kbd = 'inline-grid min-w-8 place-items-center rounded-md bg-surface px-2 p
                   ))}
                 </ul>
                 <p class="mt-5 max-w-2xl text-sm text-muted">
-                  Open <span class="font-medium text-fg">AI Agents (MCP)…</span> from the menu bar, flip it on, and copy the setup for your client — or add Cursor and VS Code in one click. It’s off by default and runs entirely on your Mac.
+                  Open <span class="font-medium text-fg">Settings › AI Agents</span>, flip it on, and copy the setup for your client — or add Cursor and VS Code in one click. It’s off by default and runs entirely on your Mac.
                 </p>
               </div>
             </div>
           ) : (
           <article id={f.id} class="grid scroll-mt-8 items-center gap-6 lg:grid-cols-2 lg:gap-16">
             <div class:list={['max-w-lg', { 'lg:order-2': i % 2 }]}>
+              {f.id === 'sync' && (
+                <p class="mb-3 inline-flex items-center gap-2 rounded-full bg-accent/10 px-3 py-1 text-sm font-semibold text-accent ring-1 ring-accent/20">
+                  <Icon name="flask" class="size-4" />New and experimental
+                </p>
+              )}
               <h3 class="font-display text-[clamp(1.5rem,2.6vw,2rem)] leading-tight tracking-[-0.02em] font-bold">{f.title}</h3>
               <p class="mt-3 leading-relaxed text-muted sm:mt-4 sm:text-lg">{f.body}</p>
             </div>
@@ -261,10 +272,29 @@ const kbd = 'inline-grid min-w-8 place-items-center rounded-md bg-surface px-2 p
               <div class={panel}>
                 <div class="relative pt-2 sm:-translate-x-14">
                   <Note title="Groceries" color="yellow" tasks={tidyTasks} revealed quick={false} width="19em" style="font-size:14px" />
-                  <div class="z-10 w-60 max-sm:mt-3 max-sm:w-full sm:absolute sm:left-[9.5rem] sm:top-[4.6rem] rounded-xl bg-white/90 p-3.5 text-[13px] text-black/85 shadow-xl ring-1 ring-black/10 backdrop-blur-xl" aria-hidden="true">
-                    <div class="flex items-center justify-between py-1">Hide completed <span class="h-4 w-7 rounded-full bg-black/15 p-0.5"><span class="block size-3 rounded-full bg-white shadow" /></span></div>
-                    <div class="mt-2 flex items-center justify-between py-1">Move completed to bottom <span class="flex h-4 w-7 justify-end rounded-full bg-[#c79e1a] p-0.5"><span class="block size-3 rounded-full bg-white shadow" /></span></div>
+                  <div class="z-10 w-64 max-sm:mt-3 max-sm:w-full sm:absolute sm:left-[9.5rem] sm:top-[4.6rem] rounded-xl bg-white/90 p-3.5 text-[13px] text-black/85 shadow-xl ring-1 ring-black/10 backdrop-blur-xl" aria-hidden="true">
+                    <div class="flex items-center justify-between gap-3 py-1"><span class="flex items-center gap-2"><Icon name="eye-slash" class="size-3.5 opacity-70" />Hide completed</span><span class="h-4 w-7 shrink-0 rounded-full bg-black/15 p-0.5"><span class="block size-3 rounded-full bg-white shadow" /></span></div>
+                    <div class="mt-2 flex items-center justify-between gap-3 py-1"><span class="flex items-center gap-2"><Icon name="arrow-line-down" class="size-3.5 opacity-70" />Move completed to bottom</span><span class="flex h-4 w-7 shrink-0 justify-end rounded-full bg-[#c79e1a] p-0.5"><span class="block size-3 rounded-full bg-white shadow" /></span></div>
                   </div>
+                </div>
+              </div>
+            )}
+
+            {f.id === 'sync' && (
+              <div class={panel}>
+                <div class="flex w-full flex-col items-center gap-5">
+                  <div data-sync-demo class="grid w-full items-center justify-items-center gap-4 sm:grid-cols-[1fr_auto_1fr]">
+                    <figure class="flex flex-col items-center gap-2.5">
+                      <figcaption class="flex items-center gap-1.5 text-sm font-medium text-muted"><Icon name="laptop" class="size-4" />Work MacBook<span data-synced class="text-accent opacity-0 transition-opacity duration-300">· synced</span></figcaption>
+                      <Note title="This week" color="yellow" tasks={syncTasks} interactive quick={false} width="15.5em" style="font-size:12px" />
+                    </figure>
+                    <span data-sync-badge class="grid size-10 place-items-center rounded-full bg-accent/10 text-accent ring-1 ring-accent/20 max-sm:rotate-90" aria-hidden="true"><Icon name="arrows-left-right" class="size-5" /></span>
+                    <figure class="flex flex-col items-center gap-2.5">
+                      <figcaption class="flex items-center gap-1.5 text-sm font-medium text-muted"><Icon name="desktop" class="size-4" />Home iMac<span data-synced class="text-accent opacity-0 transition-opacity duration-300">· synced</span></figcaption>
+                      <Note title="This week" color="yellow" tasks={syncTasks} interactive quick={false} width="15.5em" style="font-size:12px" />
+                    </figure>
+                  </div>
+                  <p class="text-sm text-muted">Tick a task on either Mac.</p>
                 </div>
               </div>
             )}
@@ -311,7 +341,7 @@ Groceries</code></pre>
         <InstallCard id="install-card" version={release?.version} />
         <div>
           <h3 class="text-lg font-semibold">Then make your first list</h3>
-          <p class="mt-2 text-muted">Open Tic and press <kbd class={kbd}>⌘</kbd> <kbd class={kbd}>N</kbd>. Turn on Launch at Login from the menu bar icon to keep your notes there after a restart.</p>
+          <p class="mt-2 text-muted">Open Tic and press <kbd class={kbd}>⌘</kbd> <kbd class={kbd}>N</kbd>. Turn on Launch at Login in Settings (<kbd class={kbd}>⌘</kbd> <kbd class={kbd}>,</kbd>) to keep your notes there after a restart.</p>
         </div>
       </div>
 
@@ -363,6 +393,34 @@ Groceries</code></pre>
     const done = !row.hasAttribute('data-done');
     row.toggleAttribute('data-done', done);
     check.setAttribute('aria-pressed', String(done));
+  });
+
+  // Sync section: a tick on one Mac's note shows up on the other's a moment later, as it would after
+  // Tic's sync runs, while the arrows between them turn.
+  document.querySelectorAll<HTMLElement>('[data-sync-demo]').forEach((demo) => {
+    const figures = [...demo.querySelectorAll('figure')];
+    const badge = demo.querySelector('[data-sync-badge] svg');
+    const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    demo.addEventListener('click', (event) => {
+      const check = (event.target as Element).closest('button.cb');
+      if (!check) return;
+      const from = figures.findIndex((f) => f.contains(check));
+      const to = figures[1 - from];
+      const index = [...figures[from].querySelectorAll('.task')].indexOf(check.closest('.task')!);
+      // This runs before the page-wide tick handler (it listens on the document), so the row is about
+      // to flip: mirror the state it's flipping to.
+      const done = !check.closest('.task')!.hasAttribute('data-done');
+      if (!still) badge?.classList.add('animate-spin');
+      setTimeout(() => {
+        const row = to.querySelectorAll('.task')[index];
+        row?.toggleAttribute('data-done', done);
+        row?.querySelector('button.cb')?.setAttribute('aria-pressed', String(done));
+        badge?.classList.remove('animate-spin');
+        const label = to.querySelector<HTMLElement>('[data-synced]');
+        label?.classList.remove('opacity-0');
+        setTimeout(() => label?.classList.add('opacity-0'), 1200);
+      }, still ? 0 : 800);
+    });
   });
 
   // AI-agents section: a looping demo of a person talking to their agent while a Tic note fills in.

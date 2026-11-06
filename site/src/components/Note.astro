@@ -39,14 +39,13 @@ const {
   interactive = false, width, class: cls, style, id,
 } = Astro.props;
 
-const glass = material === 'glass';
 const remaining = count ?? tasks.filter((task) => !task.done).length;
 const plain = (html: string) => html.replace(/<[^>]+>/g, '');
 ---
 
 <div
   id={id}
-  class:list={['note', cls]}
+  class:list={['note', cls, { rolled: collapsed }]}
   style={[width && `--w:${width}`, style].filter(Boolean).join(';') || undefined}
   data-color={color}
   data-material={material}
@@ -56,22 +55,24 @@ const plain = (html: string) => html.replace(/<[^>]+>/g, '');
     <div class="note-bar">
       <span class="note-title">{title}</span>
       {remaining > 0 && <span class="count">{remaining}</span>}
+      <span class="note-ctl" aria-hidden="true">
+        <span class="ic"><Icon name="caret-down" /></span>
+        <span class:list={['ic', { on: pinned }]}><Icon name={pinned ? 'push-pin-fill' : 'push-pin'} /></span>
+        <span class="ic"><Icon name="x" /></span>
+      </span>
     </div>
   ) : (
     <>
       <div class="note-head">
-        <div class="note-strip" aria-hidden="true">
-          <span class="ic"><Icon name="plus" /></span>
-          <span class="ic"><span class="sw" /></span>
-          <span class:list={['ic', { on: glass }]}><Icon name={glass ? 'sparkle-fill' : 'sparkle'} /></span>
-          <span class="ic"><Icon name="funnel-simple" /></span>
-          {tasks.some((task) => task.done) && <span class="ic"><Icon name="magic-wand" /></span>}
-          <span class="flex-1" />
-          <span class="ic"><Icon name="caret-up" /></span>
-          <span class:list={['ic', { on: pinned }]}><Icon name={pinned ? 'push-pin-fill' : 'push-pin'} /></span>
-          <span class="ic"><Icon name="x" /></span>
+        <div class="note-row">
+          <span class="note-title">{title}</span>
+          <span class="note-ctl" aria-hidden="true">
+            <span class="ic"><Icon name="dots-three-bold" /></span>
+            <span class="ic"><Icon name="caret-up" /></span>
+            <span class:list={['ic', { on: pinned }]}><Icon name={pinned ? 'push-pin-fill' : 'push-pin'} /></span>
+            <span class="ic"><Icon name="x" /></span>
+          </span>
         </div>
-        <div class="note-title">{title}</div>
         <div class="note-rule" />
       </div>
       <div class="note-list">

@@ -12,6 +12,10 @@ struct TicApp: App {
         } label: {
             MenuBarLabel()
         }
+
+        Settings {
+            SettingsView()
+        }
     }
 }
 
@@ -80,7 +84,7 @@ private struct MenuBarLabel: View {
 }
 
 /// The Tic menu bar menu: New List, recent lists (with a "More Lists" submenu for up to 100),
-/// a Search window, and Quit.
+/// a Search window, Settings, and Quit.
 private struct MenuBarContent: View {
     private var model: AppModel { AppModel.shared }
     private static let recentCount = 5
@@ -115,12 +119,7 @@ private struct MenuBarContent: View {
 
         Button("Search Lists…") { model.openSearch() }
 
-        Button("AI Agents (MCP)…") { model.openMCPSetup() }
-
-        Toggle("Launch at Login", isOn: Binding(
-            get: { model.launchAtLogin },
-            set: { model.setLaunchAtLogin($0) }
-        ))
+        SettingsMenuItem()
 
         if let title = model.updates.menuTitle {
             Divider()
@@ -136,5 +135,19 @@ private struct MenuBarContent: View {
 
     private func label(_ note: Note) -> String {
         note.title.isEmpty ? "Untitled List" : note.title
+    }
+}
+
+/// Opens Settings and brings it forward: opening a window from a menu-bar menu doesn't make the app
+/// active, so without `activate` it would appear behind whatever app was in front.
+private struct SettingsMenuItem: View {
+    @Environment(\.openSettings) private var openSettings
+
+    var body: some View {
+        Button("Settings…") {
+            NSApp.activate()
+            openSettings()
+        }
+        .keyboardShortcut(",")
     }
 }

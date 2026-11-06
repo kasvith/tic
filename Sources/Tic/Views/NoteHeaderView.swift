@@ -19,8 +19,18 @@ struct NoteHeaderView: View {
 
     @State private var showOptions = false
     @State private var showClearConfirm = false
+    /// Bumped to flash the sync mark (a cycle touched this list, or Sync Now was pressed).
+    @State private var syncPulse = 0
+    @State private var showsSyncMark = false
+    /// Nil outside the app (tests, previews), where notes never show sync.
+    @Environment(FolderSync.self) private var sync: FolderSync?
 
     private var note: Note { controller.note }
+
+    /// This list syncs (sync is on in Settings and for this list).
+    private var listSyncs: Bool { note.isSynced && sync?.isEnabled == true }
+    /// Why this list can't sync right now, if it can't.
+    private var syncTrouble: String? { listSyncs ? sync?.problem : nil }
 
     /// Controls stay up while the options popover is open: it's a separate window, so the pointer leaves
     /// the note to reach it.
@@ -30,6 +40,7 @@ struct NoteHeaderView: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
                 titleField
+                syncMark
                 Spacer(minLength: 0)
                 if isRolledUp { remainingCount }
                 if showsControls { controls.transition(.opacity) }
@@ -49,6 +60,28 @@ struct NoteHeaderView: View {
         .help(isRolledUp ? "Drag to move · double-click to expand" : "")
         .task(id: controller.renameRequest) {   // also runs on appear, for a list that opens renaming
             if controller.renameRequest > 0, !isRolledUp { isRenaming = true }
+        }
+        .onChange(of: sync?.activity[note.id]) { _, _ in if listSyncs { syncPulse += 1 } }
+        .task(id: syncPulse) {   // the mark shows while a sync touches the list, then fades
+            guard syncPulse > 0 else { return }
+            withAnimation(.easeOut(duration: 0.2)) { showsSyncMark = true }
+            try? await Task.sleep(for: .seconds(1.6))
+            while sync?.isSyncing == true, !Task.isCancelled { try? await Task.sleep(for: .milliseconds(200)) }
+            if !Task.isCancelled { withAnimation(.easeIn(duration: 0.4)) { showsSyncMark = false } }
+        }
+    }
+
+    /// Hidden at rest. It appears while a sync sends or brings this list's changes, then fades; it stays,
+    /// in orange, only while sync can't reach its folder.
+    @ViewBuilder private var syncMark: some View {
+        let trouble = syncTrouble
+        if listSyncs, trouble != nil || showsSyncMark {
+            Image(systemName: trouble == nil
+                  ? "arrow.triangle.2.circlepath" : "exclamationmark.arrow.triangle.2.circlepath")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(trouble == nil ? theme.secondary : Color.orange)
+                .help(trouble ?? "Syncing with your other Macs")
+                .transition(.opacity)
         }
     }
 
@@ -207,18 +240,26 @@ extension NoteHeaderView {
             Divider()
             colorSwatches
             VStack(alignment: .leading, spacing: 10) {
-                Toggle("Glass", isOn: Binding(
+                optionSwitch("Glass", systemImage: "drop", isOn: Binding(
                     get: { note.material == .glass },
                     set: { _ in controller.toggleMaterial() }
                 ))
-                Toggle("Hide completed", isOn: Binding(
+                optionSwitch("Hide completed", systemImage: "eye.slash", isOn: Binding(
                     get: { note.hideCompleted },
                     set: { _ in controller.toggleHideCompleted() }
                 ))
-                Toggle("Move completed to bottom", isOn: Binding(
+                optionSwitch("Move completed to bottom", systemImage: "arrow.down.to.line", isOn: Binding(
                     get: { note.moveCompletedToBottom },
                     set: { _ in controller.toggleMoveCompletedToBottom() }
                 ))
+                // Only once sync is on in Settings › Sync; until then there's nothing to switch.
+                if sync?.isEnabled == true {
+                    optionSwitch("Sync", systemImage: "arrow.triangle.2.circlepath", experimental: true, isOn: Binding(
+                        get: { note.isSynced },
+                        set: { _ in controller.toggleSynced() }
+                    ))
+                    .help("Keep this list the same on your other Macs")
+                }
             }
             .toggleStyle(.switch)
             .controlSize(.small)
@@ -233,11 +274,41 @@ extension NoteHeaderView {
                 popoverAction(done > 0 ? "Clean Up \(done) Completed…" : "Clean Up Completed…",
                               systemImage: "wand.and.sparkles") { showClearConfirm = true }
                     .disabled(done == 0)
+                if listSyncs {
+                    popoverAction("Sync Now", systemImage: "arrow.clockwise") {
+                        syncPulse += 1
+                        sync?.syncNow()
+                    }
+                }
             }
         }
         .font(.callout)
         .padding(14)
-        .frame(width: 240)
+        .frame(width: 290)
+    }
+
+    private static let optionIconWidth: CGFloat = 16
+    private static let optionIconGap: CGFloat = 8
+
+    /// An option row's icon and title. The icon sits in a fixed-width column, so every title in the
+    /// popover — switches and actions alike — starts at the same edge whatever the symbol's width.
+    private func optionLabel(_ title: String, systemImage: String) -> some View {
+        HStack(spacing: Self.optionIconGap) {
+            Image(systemName: systemImage).frame(width: Self.optionIconWidth)
+            Text(title).lineLimit(1)
+        }
+    }
+
+    /// A switch row: the label on the left, the switch at the right edge, so every switch lines up.
+    private func optionSwitch(
+        _ title: String, systemImage: String, experimental: Bool = false, isOn: Binding<Bool>
+    ) -> some View {
+        HStack(spacing: 12) {
+            optionLabel(title, systemImage: systemImage)
+            if experimental { ExperimentalTag() }
+            Spacer(minLength: 0)
+            Toggle(title, isOn: isOn).labelsHidden()
+        }
     }
 
     private var colorSwatches: some View {
@@ -268,7 +339,7 @@ extension NoteHeaderView {
             showOptions = false
             action()
         } label: {
-            Label(title, systemImage: systemImage)
+            optionLabel(title, systemImage: systemImage)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
         }

@@ -25,6 +25,10 @@ final class NoteWindowManager: NSObject, NSWindowDelegate {
     /// The note whose image the image window is showing, so closing that note closes it too.
     private var imageWindowNoteID: UUID?
 
+    /// Sync between Macs, handed to each note's views (its header shows sync activity and Sync Now). Nil
+    /// in tests, where notes simply never show sync.
+    var sync: FolderSync?
+
     init(appDatabase: AppDatabase) {
         self.appDatabase = appDatabase
         super.init()
@@ -63,7 +67,7 @@ final class NoteWindowManager: NSObject, NSWindowDelegate {
         controllers[note.id] = controller
         controller.start()
 
-        let panel = NotePanel(note: note, content: AnyView(NoteView(controller: controller)))
+        let panel = NotePanel(note: note, content: AnyView(NoteView(controller: controller).environment(sync)))
         panels[note.id] = panel
         savedFrames[note.id] = CGRect(x: note.frameX, y: note.frameY, width: note.frameW, height: note.frameH)
 

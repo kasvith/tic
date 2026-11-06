@@ -22,6 +22,27 @@ final class UpdateChecker {
         }
     }
 
+    /// How often to look for a new version (Settings › General). Daily is the default.
+    enum Frequency: String, CaseIterable, Identifiable, Sendable {
+        case daily, weekly, never
+
+        var id: String { rawValue }
+        var title: String {
+            switch self {
+            case .daily: "Daily"
+            case .weekly: "Weekly"
+            case .never: "Never"
+            }
+        }
+        var interval: TimeInterval? {
+            switch self {
+            case .daily: 24 * 60 * 60
+            case .weekly: 7 * 24 * 60 * 60
+            case .never: nil
+            }
+        }
+    }
+
     enum InstallState: Equatable {
         case idle
         case installing
@@ -39,6 +60,11 @@ final class UpdateChecker {
     /// Where an Update Now is at; drives the update window's footer and the menu item.
     private(set) var installState = InstallState.idle
 
+    private(set) var frequency: Frequency
+    /// The last check that reached GitHub; remembered so Weekly survives relaunches.
+    private(set) var lastChecked: Date?
+    private(set) var isChecking = false
+
     /// The menu item's title; also how the menu-tracking observer recognises our menu.
     var menuTitle: String? {
         available.map {
@@ -53,7 +79,8 @@ final class UpdateChecker {
     /// The list, not `releases/latest`: one request brings the notes for every version since this one.
     private nonisolated static let releasesURL =
         URL(string: "https://api.github.com/repos/kasvith/tic/releases?per_page=20")!
-    private static let interval: TimeInterval = 24 * 60 * 60
+    private static let frequencyKey = "updateCheckFrequency"
+    private static let lastCheckedKey = "updateLastChecked"
     private static let notifiedVersionKey = "updateNotifiedVersion"
     private static let seenVersionKey = "updateSeenVersion"
 
@@ -79,6 +106,8 @@ final class UpdateChecker {
         self.notify = notify
         self.installer = installer
         self.restart = restart
+        frequency = defaults.string(forKey: Self.frequencyKey).flatMap(Frequency.init(rawValue:)) ?? .daily
+        lastChecked = defaults.object(forKey: Self.lastCheckedKey) as? Date
 
         // Opening the menu (and so seeing the item) counts as "seen": the dot goes once it closes.
         NotificationCenter.default.addObserver(
@@ -93,7 +122,9 @@ final class UpdateChecker {
         }
     }
 
-    /// Check shortly after launch (so it never competes with restoring notes), then daily.
+    /// Check shortly after launch (so it never competes with restoring notes; an update found before
+    /// a relaunch shows again), then whenever `frequency` says one is due — re-evaluated hourly, so a
+    /// changed setting or a long sleep is picked up without a timer per setting.
     func start() {
         guard currentVersion != nil else {
             NSLog("[Tic] update check disabled: no bundle version (swift run?)")
@@ -102,17 +133,33 @@ final class UpdateChecker {
         loop?.cancel()
         loop = Task { [weak self] in
             try? await Task.sleep(for: .seconds(10))
+            if self?.frequency != .never { await self?.check() }
             while !Task.isCancelled {
-                await self?.check()
-                try? await Task.sleep(for: .seconds(Self.interval))
+                try? await Task.sleep(for: .seconds(60 * 60))
+                if self?.isDue == true { await self?.check() }
             }
         }
     }
 
+    func setFrequency(_ frequency: Frequency) {
+        self.frequency = frequency
+        defaults.set(frequency.rawValue, forKey: Self.frequencyKey)
+    }
+
+    private var isDue: Bool {
+        guard let interval = frequency.interval else { return false }
+        guard let lastChecked else { return true }
+        return Date().timeIntervalSince(lastChecked) >= interval
+    }
+
     func check() async {
-        guard let currentVersion else { return }
+        guard let currentVersion, !isChecking else { return }
+        isChecking = true
+        defer { isChecking = false }
         do {
             let release = try await fetch()
+            lastChecked = Date()
+            defaults.set(lastChecked, forKey: Self.lastCheckedKey)
             guard Self.isNewer(release.version, than: currentVersion) else {
                 available = nil
                 isUnseen = false
