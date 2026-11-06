@@ -162,7 +162,7 @@ export const guides: Guide[] = [
         heading: 'Tic: a sticky note that’s a to-do list',
         body: [
           'Tic makes each list its own small note on your desktop, with a checkbox on every line. Drag it where you want it and pin it above your other windows if you like. It stays put across restarts.',
-          'It runs on one Mac: there’s no iPhone app and no sync, and no due dates. If you need those, use Reminders.',
+          'It’s Mac only: there’s no iPhone app and no due dates, though it can sync the lists you choose between your Macs. If you need a phone or dates, use Reminders.',
         ],
       },
     ],
@@ -207,7 +207,7 @@ export const guides: Guide[] = [
       },
       {
         q: 'Does Tic sync with my iPhone?',
-        a: 'No. Tic runs on one Mac and keeps everything in a local SQLite file. If you need your list on your phone, use Reminders.',
+        a: 'No. Tic is a Mac app: it keeps your lists in a local SQLite file and can sync the ones you choose between your Macs, but not to a phone. If you need your list on your phone, use Reminders.',
       },
     ],
     compare: ['stickies', 'apple-reminders'],

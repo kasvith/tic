@@ -10,7 +10,7 @@ export const features: { id: string; label: string; tic: string }[] = [
   { id: 'checkboxes', label: 'Checkboxes', tic: 'One on every task' },
   { id: 'subtasks', label: 'Subtasks', tic: 'Three levels deep. Finish the last subtask and the parent ticks itself' },
   { id: 'dates', label: 'Due dates and reminders', tic: 'No' },
-  { id: 'sync', label: 'Sync between devices', tic: 'No, one Mac' },
+  { id: 'sync', label: 'Sync between devices', tic: 'Between your Macs, for the lists you choose. No phone app' },
   { id: 'formatting', label: 'Formatting', tic: 'Inline Markdown: bold, italic, code, strikethrough, links' },
   { id: 'images', label: 'Images', tic: 'Paste with ⌘V, crop in place' },
   { id: 'search', label: 'Search across lists', tic: 'Search Lists from the menu bar' },
@@ -18,7 +18,7 @@ export const features: { id: string; label: string; tic: string }[] = [
   { id: 'look', label: 'Colours', tic: 'Six paper colours, or glass' },
   { id: 'account', label: 'Account', tic: 'None' },
   { id: 'price', label: 'Price', tic: 'Free and open source, MIT license' },
-  { id: 'data', label: 'Where your data lives', tic: 'On your Mac, in a SQLite file you can open' },
+  { id: 'data', label: 'Where your data lives', tic: 'On your Mac, in a SQLite file you can open, plus your own sync folder for lists you sync' },
   { id: 'platforms', label: 'Runs on', tic: 'macOS 14 Sonoma or later, Apple silicon' },
 ];
 
@@ -113,7 +113,7 @@ export const competitors: Competitor[] = [
     keep: {
       heading: 'Keep Todoist for the big picture. Put today on the desktop.',
       body: [
-        'If you need due dates, reminders, shared projects or a list on your phone, Todoist does that and Tic doesn’t. Tic has no sync, no dates and no account.',
+        'If you need due dates, reminders, shared projects or a list on your phone, Todoist does that and Tic doesn’t. Tic has no phone app, no dates and no account.',
         'What Tic does is keep a short list visible while you work. Make a note for today, or for the thing you’re shipping this week, pin it above your windows, and tick things off without leaving what you’re doing. Plenty of people run both: Todoist as the system, a Tic note as the scratch list on top of it.',
         'Everything Tic stores stays on your Mac in a SQLite file. There’s no server and nothing to sign up for.',
       ],
@@ -121,7 +121,7 @@ export const competitors: Competitor[] = [
     faqs: [
       {
         q: 'Does Tic sync like Todoist?',
-        a: 'No. Tic keeps every list on one Mac. If you need your tasks on a phone, keep Todoist for those.',
+        a: 'Only between Macs. Tic can sync the lists you choose through iCloud Drive or another folder your Macs share, but it has no phone or web app. If you need your tasks on a phone, keep Todoist for those.',
       },
       {
         q: 'Can Tic set due dates or reminders?',
@@ -165,7 +165,7 @@ export const competitors: Competitor[] = [
     keep: {
       heading: 'Keep Things for planning. Use Tic for the list in front of you.',
       body: [
-        'If you plan in areas and projects, schedule with start dates and deadlines, and want the same list on your iPhone, Things does all of that and Tic doesn’t. Tic has no dates, no sync and no phone app.',
+        'If you plan in areas and projects, schedule with start dates and deadlines, and want the same list on your iPhone, Things does all of that and Tic doesn’t. Tic has no dates and no phone app, and it syncs only between Macs.',
         'Tic is for the short list you want to see all day. Make a note for today, pin it above your work, paste a screenshot under the task it belongs to, and tick things off as you go. Finish the last subtask and the parent ticks itself.',
         'It costs nothing, the code is on GitHub, and your lists live in a SQLite file on your Mac.',
       ],
@@ -177,7 +177,7 @@ export const competitors: Competitor[] = [
       },
       {
         q: 'Does Tic have an iPhone app?',
-        a: 'No. Tic is a Mac app and keeps everything on one Mac.',
+        a: 'No. Tic is a Mac app. It can sync the lists you choose between your Macs, but not to a phone.',
       },
       {
         q: 'Can I paste images into Tic?',
@@ -217,15 +217,15 @@ export const competitors: Competitor[] = [
     keep: {
       heading: 'Keep Reminders for alarms and shared lists. Use Tic for the list on top.',
       body: [
-        'Anything that needs a time, a location alert or a list shared with someone else belongs in Reminders. Tic has no dates, no alerts and no sync.',
+        'Anything that needs a time, a location alert or a list shared with someone else belongs in Reminders. Tic has no dates, no alerts and no shared lists.',
         'Tic is for the list you want to see while you work. Pin it above your windows, nest the small steps under the big one, paste a screenshot under the task it belongs to, and tick things off. When the note gets long, hide the finished tasks or clear them out.',
-        'Tic stores your lists in a SQLite file on your Mac. No account, no iCloud, no tracking.',
+        'Tic stores your lists in a SQLite file on your Mac, and syncs the ones you choose between your Macs through iCloud Drive. No account, no tracking.',
       ],
     },
     faqs: [
       {
         q: 'Does Tic sync with iCloud?',
-        a: 'No. Tic keeps every list on one Mac, in a file you can open yourself.',
+        a: 'Between your Macs, yes. Turn on sync in Tic’s Settings and the lists you choose stay in step through iCloud Drive (or Dropbox and the like). There is no iPhone app, so for a list on your phone, use Reminders.',
       },
       {
         q: 'Can Tic remind me at a time or place?',
