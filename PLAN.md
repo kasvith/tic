@@ -336,10 +336,79 @@ Tests/TicTests/
   open panel. Toggle MCP off → the agent's next call fails with the stderr hint. Connect a second
   client and confirm "2 connected" and that both see each other's writes via `get_note`.
 
+## Sync between Macs (planned)
+
+The request: one person, two Macs (work laptop + home desktop), used **one at a time**. Same lists
+on both, changes carried between sessions, but **each Mac chooses which lists are open**.
+
+### Decision: files in a synced folder, not CloudKit
+
+CloudKit (and every other iCloud API) needs the iCloud entitlement, which an ad-hoc signed app can't
+carry — it takes a paid Developer Program account, Developer ID signing, a provisioning profile and
+notarisation. A synced *folder* needs none of that: Tic only reads and writes plain files, and
+whatever syncs the folder does the networking. Default `iCloud Drive/Tic`; a "Choose Folder…"
+picker covers a work Mac without personal iCloud (Dropbox, Google Drive, OneDrive, Syncthing).
+Rejected: the SQLite file itself in iCloud Drive (WAL files sync separately → corruption), a server
+of our own (accounts, hosting, breaks local-only), LAN peer-to-peer (the Macs are rarely on together).
+
+### Shape: one file per Mac, a last-writer-wins CRDT
+
+```
+<sync folder>/devices/<deviceId>.json   ← each Mac writes only its own file
+<sync folder>/images/<sha256>.png       ← later; immutable, named by content
+```
+
+- **Single writer per file**, so a sync service never sees a write conflict (no "conflicted copy").
+- **Export** (a second or two after a DB change, via a GRDB observation on `note`/`task`): diff the
+  DB against this Mac's last snapshot, stamp the changed fields, write the file atomically. Offline
+  is fine — the write is local and uploads later.
+- **Import** (launch, wake, ~30 s poll): read the other Macs' files, merge with the pure
+  `SyncMerge`, apply in one transaction, and copy the winners into this Mac's snapshot so it doesn't
+  re-claim them. SQLite stays the only source of truth; the schema is unchanged; open panels update
+  through the existing `ValueObservation`s.
+- The merge is a state-based CRDT (commutative, idempotent), so file read order and repeats don't
+  matter. Tests assert exactly those properties plus the rules below.
+
+| What | Rule |
+|---|---|
+| Task text, `isDone` (+ `completedAt`) | One register per field; newest stamp wins |
+| Note title, colour, material, list options | One register per field; newest stamp wins |
+| A note's task order + nesting | **One register for the whole outline** (`[(taskId, level)]`); newest wins; a task missing from the winner goes after its previous neighbour; written back via `applyStructuralUpdate` + `normalizedLevels` |
+| Deletes | **Delete always wins**, even over a newer edit; a deleted note takes its tasks |
+| Frame, `isOpen`, collapsed, float, all-Spaces, the note's own `sortIndex` | Never in the file — per Mac |
+| Stamp | `max(now, highest stamp seen + 1)`; a same-millisecond tie goes to the larger encoded value, so every Mac picks the same winner |
+
+Per-field registers mean a tick on one Mac and a text edit on the other both survive; the outline as
+one register means two reorders never interleave into a jumble. Files carry a `schema` number — a
+Mac that sees a newer one skips it and asks to update Tic.
+
+- A list **created on the other Mac arrives closed** and shows up in the menu-bar Lists; opening it
+  makes it open on that Mac from then on.
+- Settings › Sync lists each other Mac with **"Latest changes <time>"** — the real risk with
+  one-at-a-time use is the laptop lid closing before its upload finishes, and this lets the user see
+  whether changes arrived. Tic also writes pending edits at once when the Mac goes to sleep.
+- Each Mac's welcome notes have their own ids, so after a first sync the other Mac's copies show up
+  (closed) in the Lists menu; delete the extras. Fixed ids were rejected: a new install's pristine
+  copy would carry newer stamps and undo edits made to the welcome note on the older Mac.
+
+**Accepted limits** (rare for one person on one Mac at a time): the same task's text edited on both
+Macs before a sync → one version wins; a parent ticked on one Mac while a child is added under it on
+the other → ticked parent with an unticked child; deletion markers are kept forever (tiny).
+Automerge/Yjs would merge text character by character, but only help with simultaneous editing,
+would make SQLite a second source of truth, and add a Rust dependency — revisit only for lists
+shared live with other people.
+
+### Build order
+
+1. Check on one Mac that an ad-hoc `.app` can write to iCloud Drive (privacy prompt? re-asked after a
+   rebuild changes the signature?).
+2. `SyncSnapshot` + `SyncMerge` (pure, unit-tested) and the export/import loop (`FolderSync`),
+   notes + tasks only, set up in a new **Settings window** (General · Sync · AI Agents), which also
+   takes over Launch at Login, update-check frequency, and the MCP setup window. *(Built.)*
+3. Images as content-addressed files.
+
 ## Open follow-ups (post-MVP, not built now)
 
 Daily-vs-planned rollover (the signature feature — a Today note that carries unfinished items to
 tomorrow), recurring tasks, due dates + Reminders/Calendar, tags/priority, global quick-add
-hotkey, **iCloud sync** (its own project with SQLite — either iCloud-Drive the DB file or build
-CloudKit record sync; the UUID + `updatedAt` schema keeps this feasible), App Store
-notarization.
+hotkey, App Store notarization. (Sync between Macs: see above.)

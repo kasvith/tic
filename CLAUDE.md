@@ -25,7 +25,7 @@ open Package.swift          # opens the package in Xcode for GUI editing / previ
   the unsigned app opens without Gatekeeper's block. It verifies `Tic.zip.sha256` and quits only the
   app process (the `pgrep -f` pattern is anchored, so `Tic --mcp` helpers and their wrappers survive).
   Test it with `TIC_DEST=<tmp dir>` and a stub `open` first on `PATH`.
-- **Verification** is a clean `swift build`, `swift test` (Swift Testing — `AppDatabaseTests`,
+- **Verification** is a clean `swift build`, `swift test` (Swift Testing — `AppDatabaseTests`, `SyncTests`,
   `TaskOutlineTests`, `NoteColorTests`, `TaskImageTests`, …), plus running the app. The outline logic lives in pure,
   testable functions (`TaskOutline`) precisely so it can be covered without a DB or the main actor.
 - `swift run` produces a bare executable (no bundle): fine for dev, but it has no Dock identity
@@ -108,9 +108,33 @@ panels**, and a few responsibilities are deliberately split across the AppKit/Sw
   (`WindowActions`), reusing `TaskOutline` for every structural rule so tools and UI can't diverge.
   Clients speak **stdio** to `Tic --mcp` (`MCPProxy`), which pipes to the socket — one config works
   for every client, and the server lives in the app next to the observers. Off by default
-  (`AppModel.mcpEnabled`). **Live updates are free:** tools write the DB, the existing
+  (`AppModel.mcpEnabled`); switched on, with per-client setup snippets, in Settings › AI Agents. **Live updates are free:** tools write the DB, the existing
   `ValueObservation` streams push into open panels; the one addition is `observeNote(id:)` so the
   controller streams its own note row too (an agent's title/colour/flag write shows live).
+- **Sync between Macs (`Sync/`)** — one person's Macs share lists through a folder something else
+  syncs (iCloud Drive by default, or any Dropbox / Google Drive / OneDrive / Syncthing folder). **No
+  CloudKit:** every iCloud API needs an entitlement an ad-hoc app can't carry; plain files need none.
+  Each Mac writes only `devices/<id>.json` (a `SyncSnapshot`) and reads the others, so a sync service
+  never sees a conflict. `SyncMerge` (pure, like `TaskOutline`) is a state-based CRDT: every synced
+  field is a `Register` (newest stamp wins), a note's whole outline (order + nesting) is one
+  register, **delete always wins**, and stamps are `max(now, clock + 1)` so an edit made after seeing a
+  change beats it on a slow clock. `record` diffs the DB against `resolve(snapshot)` (not the raw
+  registers), so values this Mac adjusted on apply never look like local edits.
+  `AppDatabase.syncCycle` does record → merge → apply in **one write transaction**, touching only
+  synced columns: frame, `isOpen`, collapsed, float, all-Spaces and the note's own `sortIndex` stay
+  per Mac, and lists from another Mac arrive **closed**. `FolderSync` (`@MainActor`) runs a cycle at
+  start, 2 s after a synced edit (`observeSyncedChanges`, a column-limited region observation, so frame
+  drags don't trigger it), every 30 s, on wake, and at once on sleep; file IO is off the main actor
+  (an iCloud file may download as it's read). It keeps its own snapshot in `sync-state.json` beside the
+  DB and its device id in the `syncDeviceID` default (issued once, so a lost state file never leaves a
+  ghost Mac in the folder), refuses to recreate a folder whose parent vanished (an unmounted Dropbox reads as "can't
+  reach"), and skips files with a newer `schema` — bump it when the format changes **or `NoteColor` /
+  `NoteMaterial` gains a case**. Images don't sync yet. Off by default (`syncEnabled` default).
+- **Settings window (`SettingsView`)** — a SwiftUI `Settings` scene (⌘, and Tic › Settings… come
+  free) with three `Form(.grouped)` tabs: General (Launch at Login, version, update frequency + Check
+  Now), Sync, AI Agents (the MCP switch and per-client snippets). The menu-bar item calls
+  `openSettings` after `NSApp.activate()`: a window opened from a menu-bar menu otherwise appears behind
+  the frontmost app.
 - **App shell** — `TicApp` provides a `MenuBarExtra`; `main.swift` (not `@main`) routes `--mcp` to
   the proxy, else `TicApp.main()`; `AppDelegate`
   (`NSApplicationDelegateAdaptor`) builds the shared `AppDatabase` + `NoteWindowManager` and calls
@@ -214,8 +238,9 @@ panels**, and a few responsibilities are deliberately split across the AppKit/Sw
   (title/task/secondary/completed/checkbox) for a `Surface` (`.solid` uses per-theme tuned inks;
   `.glass` uses adaptive `.primary`/`.secondary`). Views read a resolved `NoteTheme`, never branch
   on material themselves.
-- **Updates install in place, after a confirmation (`UpdateChecker` + `UpdateInstaller`).** Daily
-  GET of the GitHub releases list (one request brings every release's git-cliff notes, parsed by
+- **Updates install in place, after a confirmation (`UpdateChecker` + `UpdateInstaller`).** A GET of
+  the GitHub releases list at launch and then daily or weekly (`Frequency`, Settings › General; Never
+  turns it off; `lastChecked` is remembered and re-evaluated hourly) (one request brings every release's git-cliff notes, parsed by
   `ReleaseNotes`), compared numerically against `CFBundleShortVersionString` (nil under `swift run` →
   checker off). The menu item and the banner open the update window (`UpdateView`, a floating panel
   from `AppModel.openUpdate`): the notes for every version since the installed one, then Update Later /
@@ -242,8 +267,8 @@ panels**, and a few responsibilities are deliberately split across the AppKit/Sw
     banner, copy the build to `/Applications/Tic Dev.app`, give it a unique `CFBundleIdentifier`
     (PlistBuddy), re-sign ad-hoc, then `open` it. Re-arm with
     `defaults delete <bundle id> updateNotifiedVersion updateSeenVersion`, and delete the copy after.
-- **Models are sync-friendly.** `Note`/`TaskItem` use `UUID` PKs + `updatedAt`; relationships and
-  defaults are chosen so CloudKit/iCloud sync stays feasible later (currently local-only).
+- **Models are sync-friendly.** `Note`/`TaskItem` use `UUID` PKs, which is what lets `SyncMerge` key
+  every register by id across Macs.
 
 ### Swift 6 strict concurrency
 
