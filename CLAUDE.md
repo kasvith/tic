@@ -136,7 +136,7 @@ panels**, and a few responsibilities are deliberately split across the AppKit/Sw
   hasn't arrived keeps this Mac's own register for that cycle (`waitingImages`), so it never reads as a
   removal; files are loaded only when their hash checks out, and unreferenced ones are deleted after a
   week. `observeTaskImageCrops` carries the hash so a replacement with the same crop reloads its thumbnail.
-  **UI:** ⋯ › Sync and Sync Now on the note; the header's sync mark shows only while a cycle touches the
+  **UI:** ⋯ › Sync (shown only once sync is on in Settings) and Sync Now (for a list that syncs); the header's sync mark shows only while a cycle touches the
   list (`FolderSync.activity`) and stays, orange, while there's a `problem`. `NoteWindowManager.sync` is
   injected into note views as an optional environment object (nil in tests). `FolderSync` (`@MainActor`) runs a cycle at
   start, 2 s after a synced edit (`observeSyncedChanges`, a column-limited region observation, so frame
@@ -149,8 +149,7 @@ panels**, and a few responsibilities are deliberately split across the AppKit/Sw
 - **Settings window (`SettingsView`)** — a SwiftUI `Settings` scene (⌘, and Tic › Settings… come
   free) with three `Form(.grouped)` tabs: General (Launch at Login, version, update frequency + Check
   Now), Sync (switch, folder, other Macs, and a switch per list), AI Agents (the MCP switch and
-  per-client snippets). The selected tab is the `settingsTab` default, so a note's "Turn on sync"
-  link can open straight to Sync. The menu-bar item calls
+  per-client snippets). The selected tab is remembered in the `settingsTab` default. The menu-bar item calls
   `openSettings` after `NSApp.activate()`: a window opened from a menu-bar menu otherwise appears behind
   the frontmost app.
 - **App shell** — `TicApp` provides a `MenuBarExtra`; `main.swift` (not `@main`) routes `--mcp` to

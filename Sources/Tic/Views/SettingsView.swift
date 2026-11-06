@@ -5,7 +5,7 @@ import SwiftUI
 /// scene with three grouped-form tabs. Everything here is a thin view over `AppModel` — the launch
 /// item, `UpdateChecker`, `FolderSync` and the MCP service own the actual behaviour.
 struct SettingsView: View {
-    /// Remembered, so Settings reopens where it was — and a note's "Turn on sync" link can open Sync.
+    /// Remembered, so Settings reopens on the tab it was left on.
     @AppStorage(SettingsTab.storageKey) private var tab = SettingsTab.general
 
     var body: some View {

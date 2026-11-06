@@ -24,7 +24,6 @@ struct NoteHeaderView: View {
     @State private var showsSyncMark = false
     /// Nil outside the app (tests, previews), where notes never show sync.
     @Environment(FolderSync.self) private var sync: FolderSync?
-    @Environment(\.openSettings) private var openSettings
 
     private var note: Note { controller.note }
 
@@ -253,24 +252,13 @@ extension NoteHeaderView {
                     get: { note.moveCompletedToBottom },
                     set: { _ in controller.toggleMoveCompletedToBottom() }
                 ))
-                if let sync {
+                // Only once sync is on in Settings › Sync; until then there's nothing to switch.
+                if sync?.isEnabled == true {
                     optionSwitch("Sync", systemImage: "arrow.triangle.2.circlepath", isOn: Binding(
-                        get: { note.isSynced && sync.isEnabled },
+                        get: { note.isSynced },
                         set: { _ in controller.toggleSynced() }
                     ))
-                    .disabled(!sync.isEnabled)
                     .help("Keep this list the same on your other Macs")
-                    if !sync.isEnabled {
-                        Button("Turn on sync in Settings › Sync first.") {
-                            showOptions = false
-                            UserDefaults.standard.set(SettingsTab.sync.rawValue, forKey: SettingsTab.storageKey)
-                            NSApp.activate()
-                            openSettings()
-                        }
-                        .buttonStyle(.link)
-                        .font(.caption)
-                        .padding(.leading, Self.optionIconWidth + Self.optionIconGap)
-                    }
                 }
             }
             .toggleStyle(.switch)
