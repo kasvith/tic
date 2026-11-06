@@ -81,7 +81,7 @@ struct NoteHeaderView: View {
                     titleText = note.title
                     titleFocused = false
                 }
-                .onAppear { titleFocused = true }
+                .task { titleFocused = true }   // after the field appears: set during `onAppear` it can be ignored
         } else {
             titleLabel.allowsHitTesting(false)
         }
