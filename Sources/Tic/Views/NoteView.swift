@@ -58,7 +58,7 @@ struct NoteView: View {
     @State private var activeSectionID: TaskItem.ID?
     // The task whose image is under the pointer or being cropped; its row's reorder drag is paused.
     @State private var imageInteractionTaskID: TaskItem.ID?
-    @FocusState private var titleFocused: Bool
+    @State private var renamingTitle = false
 
     private static let listSpace = "tic.tasklist"
 
@@ -89,7 +89,7 @@ struct NoteView: View {
                 isRevealed: revealed,
                 isRolledUp: showsBar,
                 titleText: $titleText,
-                titleFocused: $titleFocused
+                isRenaming: $renamingTitle
             )
             // Rolled up, the header's top row is all that's left: the window closes over the rest like a
             // shade, and the list leaves only once it's shut, so nothing moves and nothing hidden keeps focus.
@@ -178,7 +178,7 @@ struct NoteView: View {
             }
             .onChange(of: controller.note.title) { _, newTitle in
                 // An agent (or another writer) renamed the note: reflect it unless the user is mid-edit.
-                if !titleFocused { titleText = newTitle }
+                if !renamingTitle { titleText = newTitle }
             }
             .overlay(alignment: .top) {
                 if display.isEmpty {

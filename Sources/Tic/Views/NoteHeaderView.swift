@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// A sticky note's top row — the editable title, with roll-up / pin / close and a ⋯ options popover fading
@@ -13,11 +14,11 @@ struct NoteHeaderView: View {
     var isRolledUp = false
 
     @Binding var titleText: String
-    @FocusState.Binding var titleFocused: Bool
+    /// The title is being renamed (owned by `NoteView`, which holds back outside title changes meanwhile).
+    @Binding var isRenaming: Bool
 
     @State private var showOptions = false
     @State private var showClearConfirm = false
-    @State private var editingTitle = false
 
     private var note: Note { controller.note }
 
@@ -46,42 +47,36 @@ struct NoteHeaderView: View {
         // The header is the window's drag handle; double-clicking its chrome rolls the note up or down.
         .background(WindowMoveArea { controller.toggleCollapsed() })
         .help(isRolledUp ? "Drag to move · double-click to expand" : "")
-        .onChange(of: titleFocused) { _, focused in
-            guard !focused else { return }
-            commitTitle()
-            editingTitle = false
-        }
         .task(id: controller.renameRequest) {   // also runs on appear, for a list that opens renaming
-            if controller.renameRequest > 0, !isRolledUp { editingTitle = true }
+            if controller.renameRequest > 0, !isRolledUp { isRenaming = true }
         }
     }
 
     /// Plain text that's part of the drag handle (a press drags, a double-click rolls up — in the window's
     /// hidden title-bar strip, a title taking clicks let macOS zoom the window). Renaming — ⋯ › Rename…, or a
-    /// new list — swaps in an outlined field: Return or clicking away saves, Esc restores the old name.
+    /// new list — swaps in an outlined `TitleField`: Return or clicking away saves, Esc restores the old name.
     @ViewBuilder private var titleField: some View {
-        if editingTitle && !isRolledUp {
-            TextField("", text: $titleText)
-                .textFieldStyle(.plain)
-                .font(.headline.weight(.semibold))
-                .foregroundStyle(theme.title)
-                .focused($titleFocused)
-                .overlay(alignment: .leading) {
-                    if titleText.isEmpty { titleLabel.allowsHitTesting(false) }
+        if isRenaming && !isRolledUp {
+            TitleField(
+                text: $titleText,
+                font: .systemFont(ofSize: NSFont.preferredFont(forTextStyle: .headline).pointSize, weight: .semibold),
+                color: NSColor(theme.title),
+                onEnd: { saved in
+                    if !saved { titleText = note.title }
+                    commitTitle()
+                    isRenaming = false
                 }
-                .background(   // drawn outside the field, so its text stays where the label's was
-                    RoundedRectangle(cornerRadius: 5)
-                        .fill(Color.white.opacity(0.45))
-                        .strokeBorder(theme.accent.opacity(0.7))
-                        .padding(.horizontal, -5)
-                        .padding(.vertical, -2)
-                )
-                .onSubmit { titleFocused = false }
-                .onExitCommand {
-                    titleText = note.title
-                    titleFocused = false
-                }
-                .task { titleFocused = true }   // after the field appears: set during `onAppear` it can be ignored
+            )
+            .overlay(alignment: .leading) {
+                if titleText.isEmpty { titleLabel.allowsHitTesting(false) }
+            }
+            .background(   // drawn outside the field, so its text stays where the label's was
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(Color.white.opacity(0.45))
+                    .strokeBorder(theme.accent.opacity(0.7))
+                    .padding(.horizontal, -5)
+                    .padding(.vertical, -2)
+            )
         } else {
             titleLabel.allowsHitTesting(false)
         }
@@ -278,6 +273,73 @@ extension NoteHeaderView {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// The title's rename field: an AppKit text field, not a SwiftUI `TextField` focused through `@FocusState`,
+/// whose focus set from a view update behaves differently across macOS versions. This one makes itself first
+/// responder once it's in the window, and ends — once — on Return or clicking away (`saved`) or Esc (not).
+private struct TitleField: NSViewRepresentable {
+    @Binding var text: String
+    let font: NSFont
+    let color: NSColor
+    let onEnd: (_ saved: Bool) -> Void
+
+    func makeNSView(context: Context) -> Field {
+        let field = Field(string: text)
+        field.isBordered = false
+        field.drawsBackground = false
+        field.focusRingType = .none
+        field.usesSingleLineMode = true
+        field.lineBreakMode = .byTruncatingTail
+        field.cell?.isScrollable = true
+        field.delegate = context.coordinator
+        return field
+    }
+
+    func updateNSView(_ field: Field, context: Context) {
+        context.coordinator.parent = self
+        field.font = font
+        field.textColor = color
+        if field.currentEditor() == nil, field.stringValue != text { field.stringValue = text }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    final class Field: NSTextField {
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            // Deferred: taking first responder mid-update would end editing inside a view update.
+            Task { @MainActor [weak self] in self?.window?.makeFirstResponder(self) }
+        }
+    }
+
+    final class Coordinator: NSObject, NSTextFieldDelegate {
+        var parent: TitleField
+        private var ended = false
+
+        init(_ parent: TitleField) { self.parent = parent }
+
+        func controlTextDidChange(_ note: Notification) {
+            if let field = note.object as? NSTextField { parent.text = field.stringValue }
+        }
+
+        func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+            switch selector {
+            case #selector(NSResponder.insertNewline(_:)): end(saved: true)
+            case #selector(NSResponder.cancelOperation(_:)): end(saved: false)
+            default: return false
+            }
+            return true
+        }
+
+        func controlTextDidEndEditing(_ note: Notification) { end(saved: true) }   // clicked away
+
+        private func end(saved: Bool) {
+            guard !ended else { return }
+            ended = true
+            parent.onEnd(saved)
+        }
     }
 }
 

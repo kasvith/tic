@@ -166,21 +166,22 @@ struct ReorderDragTests {
         let title = NSPoint(x: 30, y: h.top - NoteLayout.collapsedHeight / 2)
         #expect(h.panel.contentView?.hitTest(title) is WindowMoveArea.MoveView)
 
-        try rename(h, typing: "Groceries", thenPress: "\r", keyCode: 36)
+        try await rename(h, typing: "Groceries", thenPress: "\r", keyCode: 36)
         #expect(h.controller.note.title == "Groceries")
-        try rename(h, typing: "Oops", thenPress: "\u{1b}", keyCode: 53)
+        try await rename(h, typing: "Oops", thenPress: "\u{1b}", keyCode: 53)
         #expect(h.controller.note.title == "Groceries")
         #expect(!(h.panel.firstResponder is NSText), "the rename ended")
     }
 
-    private func rename(_ h: Harness, typing text: String, thenPress key: String, keyCode: UInt16) throws {
+    /// Waits by awaiting, which frees the main actor: a synchronous `pump` holds it, so the main-actor tasks a
+    /// rename runs on (SwiftUI's `.task`, the field taking focus) can't run until it returns — on CI, never did.
+    private func waitUntil(_ done: () -> Bool) async throws {
+        for _ in 0..<40 where !done() { try await Task.sleep(for: .milliseconds(50)) }
+    }
+
+    private func rename(_ h: Harness, typing text: String, thenPress key: String, keyCode: UInt16) async throws {
         h.controller.requestRename()
-        // Focus lands a few run-loop turns later (request → field → focus); slower on CI, so wait for it.
-        for _ in 0..<40 where !(h.panel.firstResponder is NSTextView) { pump(0.05) }
-        func fields(_ v: NSView) -> [NSView] { (v is NSTextField ? [v] : []) + v.subviews.flatMap(fields) }   // DIAG
-        print("DIAG os=\(ProcessInfo.processInfo.operatingSystemVersionString) key=\(h.panel.isKeyWindow) active=\(NSApp.isActive) "
-              + "fields=\(fields(h.panel.contentView!).map { "\(type(of: $0)) editable=\(($0 as? NSTextField)?.isEditable ?? false)" }) "
-              + "responder=\(h.panel.firstResponder.map { "\(type(of: $0))" } ?? "nil") request=\(h.controller.renameRequest)")   // DIAG
+        try await waitUntil { h.panel.firstResponder is NSTextView }
         let editor = try #require(h.panel.firstResponder as? NSTextView, "the rename field took the keyboard")
         editor.selectAll(nil)
         editor.insertText(text, replacementRange: editor.selectedRange())
@@ -190,7 +191,7 @@ struct ReorderDragTests {
             isARepeat: false, keyCode: keyCode
         )!
         h.panel.sendEvent(event)
-        for _ in 0..<40 where h.panel.firstResponder is NSTextView { pump(0.05) }   // the rename ends
+        try await waitUntil { !(h.panel.firstResponder is NSTextView) }   // the rename ends
     }
 
     #if DEBUG
