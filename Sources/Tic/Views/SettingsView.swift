@@ -5,14 +5,22 @@ import SwiftUI
 /// scene with three grouped-form tabs. Everything here is a thin view over `AppModel` — the launch
 /// item, `UpdateChecker`, `FolderSync` and the MCP service own the actual behaviour.
 struct SettingsView: View {
+    /// Remembered, so Settings reopens where it was — and a note's "Turn on sync" link can open Sync.
+    @AppStorage(SettingsTab.storageKey) private var tab = SettingsTab.general
+
     var body: some View {
-        TabView {
-            GeneralSettings().tabItem { Label("General", systemImage: "gearshape") }
-            SyncSettings().tabItem { Label("Sync", systemImage: "arrow.triangle.2.circlepath") }
-            AgentsSettings().tabItem { Label("AI Agents", systemImage: "sparkles") }
+        TabView(selection: $tab) {
+            GeneralSettings().tabItem { Label("General", systemImage: "gearshape") }.tag(SettingsTab.general)
+            SyncSettings().tabItem { Label("Sync", systemImage: "arrow.triangle.2.circlepath") }.tag(SettingsTab.sync)
+            AgentsSettings().tabItem { Label("AI Agents", systemImage: "sparkles") }.tag(SettingsTab.agents)
         }
         .frame(width: 560)
     }
+}
+
+enum SettingsTab: String {
+    case general, sync, agents
+    static let storageKey = "settingsTab"
 }
 
 /// "today at 17:42", "yesterday at 09:10", "3 Nov at 17:42".
@@ -82,7 +90,7 @@ private struct SyncSettings: View {
             Section {
                 Toggle(isOn: Binding(get: { sync.isEnabled }, set: { sync.setEnabled($0) })) {
                     Text("Sync lists between Macs")
-                    Text("The same lists on each Mac. Which lists are open, and where they sit, stay on each Mac.")
+                    Text("Only the lists you choose. Which lists are open, and where they sit, stay on each Mac.")
                 }
             }
             Section {
@@ -137,9 +145,31 @@ private struct SyncSettings: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            Section {
+                ForEach(model.notes) { note in
+                    Toggle(isOn: Binding(
+                        get: { note.isSynced && sync.isEnabled }, set: { model.setSynced(note, $0) }
+                    )) {
+                        HStack(spacing: 8) {
+                            RoundedRectangle(cornerRadius: 3).fill(note.color.fill).frame(width: 10, height: 10)
+                            Text(note.title.isEmpty ? "Untitled List" : note.title).lineLimit(1)
+                        }
+                    }
+                }
+            } header: {
+                Text("Lists")
+            } footer: {
+                let synced = model.notes.filter(\.isSynced).count
+                Text(sync.isEnabled
+                     ? "\(synced) of \(model.notes.count) lists sync. New lists don't sync until you turn it on, "
+                        + "here or from the list's ⋯ menu."
+                     : "Turn on sync to choose lists.")
+                    .foregroundStyle(.secondary)
+            }
+            .disabled(!sync.isEnabled)
         }
         .formStyle(.grouped)
-        .frame(height: 470)
+        .frame(height: 540)
     }
 
     private var thisMacStatus: String {

@@ -56,10 +56,13 @@ final class SimMac {
 
     // MARK: Actions (the UI's database paths)
 
+    /// A new list, synced unless asked otherwise (most scenarios are about lists that sync).
     @discardableResult
-    func newList(_ title: String) async throws -> UUID {
-        try await db.insertNewNote(Note(title: title)).id
+    func newList(_ title: String, synced: Bool = true) async throws -> UUID {
+        try await db.insertNewNote(Note(title: title, isSynced: synced)).id
     }
+
+    func setSynced(_ list: UUID, _ on: Bool) async throws { try await db.updateNoteSynced(id: list, isSynced: on) }
 
     func tasks(_ list: UUID) async throws -> [TaskItem] { try await db.tasks(noteId: list) }
 
@@ -111,8 +114,26 @@ final class SimMac {
 
     // MARK: Inspection
 
-    /// Everything that syncs, as this Mac's database holds it.
-    func synced() async throws -> SyncLocal { try await db.dbQueue.read { try AppDatabase.syncLocal($0) } }
+    /// The synced fields of every list, as this Mac's database holds them.
+    func synced() async throws -> SyncLocal { try await db.dbQueue.write { try AppDatabase.syncLocal($0) } }
+
+    /// Just the lists that sync, and their tasks.
+    func syncedLists() async throws -> SyncLocal {
+        var all = try await synced()
+        all.notes = all.notes.filter(\.value.isSynced)
+        all.tasks = all.tasks.filter { all.notes[$0.value.noteId] != nil }
+        return all
+    }
+
+    func setImage(_ task: UUID, _ data: Data) async throws { try await db.setTaskImage(taskId: task, data: data) }
+    func crop(_ task: UUID, _ rect: CGRect) async throws { try await db.updateTaskImageCrop(taskId: task, crop: rect) }
+    func removeImage(_ task: UUID) async throws { try await db.deleteTaskImage(taskId: task) }
+    func imageData(_ task: UUID) async throws -> Data? { try await db.taskImageData(taskId: task) }
+
+    func imageCrop(_ task: UUID, in list: UUID) async throws -> CGRect? {
+        for try await images in db.observeTaskImageCrops(noteId: list) { return images[task]?.crop }
+        return nil
+    }
 
     func texts(_ list: UUID) async throws -> [String] { try await tasks(list).map(\.text) }
 }
@@ -130,12 +151,21 @@ final class SyncWorld {
         return mac
     }
 
-    /// iCloud Drive moves `from`'s own file to `to`'s copy of the folder.
-    func deliver(_ from: SimMac, to: SimMac) throws {
+    /// iCloud Drive moves `from`'s own file — and, unless held back, its picture files — to `to`'s copy
+    /// of the folder.
+    func deliver(_ from: SimMac, to: SimMac, images: Bool = true) throws {
+        let fm = FileManager.default
         guard let data = try? Data(contentsOf: from.ownFile) else { return }   // hasn't synced yet
         let devices = to.folder.appendingPathComponent("devices", isDirectory: true)
-        try FileManager.default.createDirectory(at: devices, withIntermediateDirectories: true)
+        try fm.createDirectory(at: devices, withIntermediateDirectories: true)
         try data.write(to: devices.appendingPathComponent(from.ownFile.lastPathComponent), options: .atomic)
+        guard images else { return }
+        let source = from.folder.appendingPathComponent("images"), dest = to.folder.appendingPathComponent("images")
+        try fm.createDirectory(at: dest, withIntermediateDirectories: true)
+        for name in (try? fm.contentsOfDirectory(atPath: source.path)) ?? []
+        where !fm.fileExists(atPath: dest.appendingPathComponent(name).path) {
+            try fm.copyItem(at: source.appendingPathComponent(name), to: dest.appendingPathComponent(name))
+        }
     }
 
     func deliverAll() throws {
@@ -154,10 +184,11 @@ final class SyncWorld {
         }
     }
 
-    /// True when every Mac's database holds the same synced content.
+    /// True when every Mac's database holds the same lists that sync (lists that don't are each Mac's
+    /// own business and may differ).
     func converged() async throws -> Bool {
         var states: [SyncLocal] = []
-        for mac in macs { states.append(try await mac.synced()) }
+        for mac in macs { states.append(try await mac.syncedLists()) }
         return states.dropFirst().allSatisfy { $0 == states[0] }
     }
 
@@ -480,67 +511,39 @@ private struct SplitMix64: RandomNumberGenerator {
 @MainActor
 @Suite("Sync simulation: random edits")
 struct SyncFuzzTests {
+    /// What the run did, for the checks at the end.
+    private struct Log {
+        var listOwner: [UUID: Int] = [:]          // list → the Mac that made it
+        var taskOwner: [UUID: (mac: Int, list: UUID)] = [:]
+        var deletedEverywhere = Set<UUID>()       // tasks deleted anywhere; lists deleted while synced
+        var deletedOn: [Int: Set<UUID>] = [:]     // lists (and their tasks) deleted while not synced
+    }
+
+    private static let pictures = (0..<3).map { Data("picture \($0)".utf8) }
+
     /// Three Macs make random edits (add, tick, edit, reorder, re-nest, delete, rename, new and deleted
-    /// lists, window moves), sync and deliver files at random, then settle. Afterwards every Mac must
-    /// hold the same lists, nothing deleted anywhere may exist, nothing else may be lost, every outline
-    /// must be valid, and syncing again must write nothing.
+    /// lists, sync switched on and off, images added, cropped and removed, window moves), sync and
+    /// deliver files at random, then settle. Afterwards every Mac must hold the same synced lists,
+    /// nothing deleted may come back, nothing else may be lost, every outline must be valid, every
+    /// picture must match its hash, and syncing again must write nothing.
     @Test("random edits on three Macs, synced at random, always settle to the same lists", arguments: 0..<25)
     func randomEdits(seed: Int) async throws {
         var rng = SplitMix64(state: UInt64(seed) &* 7_919 &+ 1)
         let world = SyncWorld(); defer { world.cleanUp() }
         let macs = [try world.mac("Work MacBook"), try world.mac("Home iMac"), try world.mac("Old Mini")]
-        var lists: [UUID] = []
-        var listOf: [UUID: UUID] = [:]          // task → list, for every task ever made
-        var deleted = Set<UUID>()               // every task or list any Mac deleted
+        var log = Log()
 
         for step in 0..<40 {
-            let mac = macs.randomElement(using: &rng)!
-            let known = try await mac.db.allNotes().map(\.id)
-            let list = known.randomElement(using: &rng)
-            var tasks: [TaskItem] = []
-            if let list { tasks = try await mac.tasks(list) }
-            let task = tasks.randomElement(using: &rng)
-
-            switch Int.random(in: 0..<100, using: &rng) {
-            case 0..<24:
-                if let list {
-                    let id = try await mac.add("t\(step)", to: list, level: Int.random(in: 0...2, using: &rng))
-                    listOf[id] = list
-                } else {
-                    lists.append(try await mac.newList("L\(step)"))
-                }
-            case 24..<38:
-                if let task, let list { try await mac.toggle(task.id, in: list) }
-            case 38..<50:
-                if let task { try await mac.edit(task.id, "e\(step)·\(mac.name)") }
-            case 50..<62:
-                if let task, let list {
-                    let level: Int? = Bool.random(using: &rng) ? Int.random(in: 0...2, using: &rng) : nil
-                    try await mac.move(task.id, in: list, to: Int.random(in: 0...tasks.count, using: &rng), level: level)
-                }
-            case 62..<70:
-                if let task, let list { try await mac.delete(task.id, in: list); deleted.insert(task.id) }
-            case 70..<75:
-                if let list { try await mac.rename(list, "R\(step)") }
-            case 75..<79:
-                lists.append(try await mac.newList("L\(step)"))
-            case 79..<81:
-                if let list {
-                    deleted.insert(list)
-                    tasks.forEach { deleted.insert($0.id) }
-                    try await mac.deleteList(list)
-                }
-            case 81..<86:
-                if let list {
-                    try await mac.db.updateNoteFrame(id: list, x: .random(in: 0...2_000, using: &rng), y: 100, width: 280, height: 360)
-                    try await mac.db.updateNoteOpen(id: list, isOpen: Bool.random(using: &rng))
-                }
-            default:
-                await mac.syncNow()
+            let index = Int.random(in: 0..<macs.count, using: &rng)
+            let roll = Int.random(in: 0..<100, using: &rng)
+            if roll < 60 {
+                try await taskStep(macs[index], index, step, roll, &rng, &log)
+            } else {
+                try await listStep(macs[index], index, step, roll, &rng, &log)
             }
             if Int.random(in: 0..<4, using: &rng) == 0 {
                 let from = macs.randomElement(using: &rng)!, to = macs.randomElement(using: &rng)!
-                if from !== to { try world.deliver(from, to: to) }
+                if from !== to { try world.deliver(from, to: to, images: Bool.random(using: &rng)) }
             }
             world.clock.advance(ms: Int64.random(in: 1...300_000, using: &rng))
         }
@@ -548,26 +551,87 @@ struct SyncFuzzTests {
         try await world.syncAll(rounds: 3)
         let settled = try macs.map { try Data(contentsOf: $0.ownFile) }
         try await world.syncAll()
-
         #expect(try await world.converged(), "seed \(seed)")
         #expect(try macs.map { try Data(contentsOf: $0.ownFile) } == settled, "seed \(seed): still writing")
-        let state = try await macs[0].synced()
-        for id in deleted {
-            #expect(state.notes[id.uuidString] == nil && state.tasks[id.uuidString] == nil, "seed \(seed): \(id) came back")
+        try await check(macs, log, seed: seed)
+    }
+
+    /// Edits to one task: add, tick, edit, move or re-nest, delete, and image changes.
+    private func taskStep(_ mac: SimMac, _ index: Int, _ step: Int, _ roll: Int,
+                          _ rng: inout SplitMix64, _ log: inout Log) async throws {
+        guard let list = try await mac.db.allNotes().map(\.id).randomElement(using: &rng) else {
+            log.listOwner[try await mac.newList("L\(step)")] = index
+            return
         }
-        for list in lists where !deleted.contains(list) {
-            #expect(state.notes[list.uuidString] != nil, "seed \(seed): list lost")
+        let tasks = try await mac.tasks(list)
+        guard roll >= 18, let task = tasks.randomElement(using: &rng)?.id else {
+            let id = try await mac.add("t\(step)", to: list, level: Int.random(in: 0...2, using: &rng))
+            log.taskOwner[id] = (index, list)
+            return
         }
-        for (task, list) in listOf where !deleted.contains(task) && !deleted.contains(list) {
-            #expect(state.tasks[task.uuidString] != nil, "seed \(seed): task lost")
+        switch roll {
+        case 18..<28: try await mac.toggle(task, in: list)
+        case 28..<36: try await mac.edit(task, "e\(step)·\(mac.name)")
+        case 36..<44:
+            let level: Int? = Bool.random(using: &rng) ? Int.random(in: 0...2, using: &rng) : nil
+            try await mac.move(task, in: list, to: Int.random(in: 0...tasks.count, using: &rng), level: level)
+        case 44..<50:
+            try await mac.delete(task, in: list)
+            log.deletedEverywhere.insert(task)
+        case 50..<54: try await mac.setImage(task, Self.pictures.randomElement(using: &rng)!)
+        case 54..<57: try await mac.crop(task, CGRect(x: 0, y: 0, width: Double.random(in: 0.2...1, using: &rng), height: 1))
+        default: try await mac.removeImage(task)
         }
-        for mac in macs {
+    }
+
+    /// Whole-list edits: rename, new, delete, sync on/off, window moves — and plain syncs.
+    private func listStep(_ mac: SimMac, _ index: Int, _ step: Int, _ roll: Int,
+                          _ rng: inout SplitMix64, _ log: inout Log) async throws {
+        let notes = try await mac.db.allNotes()
+        let note = notes.randomElement(using: &rng)
+        switch roll {
+        case 60..<65: if let note { try await mac.rename(note.id, "R\(step)") }
+        case 65..<69: log.listOwner[try await mac.newList("L\(step)", synced: Bool.random(using: &rng))] = index
+        case 69..<71:
+            guard let note else { return }
+            let ids = Set(try await mac.tasks(note.id).map(\.id)).union([note.id])
+            if note.isSynced { log.deletedEverywhere.formUnion(ids) } else { log.deletedOn[index, default: []].formUnion(ids) }
+            try await mac.deleteList(note.id)
+        case 71..<75: if let note { try await mac.setSynced(note.id, !note.isSynced) }
+        case 75..<80:
+            guard let note else { return }
+            try await mac.db.updateNoteFrame(id: note.id, x: .random(in: 0...2_000, using: &rng), y: 100, width: 280, height: 360)
+            try await mac.db.updateNoteOpen(id: note.id, isOpen: Bool.random(using: &rng))
+        default: await mac.syncNow()
+        }
+    }
+
+    private func check(_ macs: [SimMac], _ log: Log, seed: Int) async throws {
+        for (index, mac) in macs.enumerated() {
+            let all = try await mac.synced()
+            let synced = try await mac.syncedLists()
+            for id in log.deletedEverywhere {
+                #expect(synced.notes[id.uuidString] == nil && synced.tasks[id.uuidString] == nil,
+                        "seed \(seed): \(id) came back on \(mac.name)")
+            }
+            let gone = log.deletedEverywhere.union(log.deletedOn[index] ?? [])
+            for (list, owner) in log.listOwner where owner == index && !gone.contains(list) {
+                #expect(all.notes[list.uuidString] != nil, "seed \(seed): list lost on \(mac.name)")
+            }
+            for (task, made) in log.taskOwner where made.mac == index && !gone.contains(task) && !gone.contains(made.list) {
+                #expect(all.tasks[task.uuidString] != nil, "seed \(seed): task lost on \(mac.name)")
+            }
             #expect(mac.sync.peers.count == 2 && mac.sync.problem == nil, "seed \(seed)")
             for note in try await mac.db.allNotes() {
-                let levels = try await mac.tasks(note.id).map(\.indentLevel)
+                let tasks = try await mac.tasks(note.id)
+                let levels = tasks.map(\.indentLevel)
                 #expect(levels.first ?? 0 == 0, "seed \(seed)")
                 #expect(zip(levels, levels.dropFirst()).allSatisfy { $1 <= $0 + 1 && $1 <= TaskItem.maxIndentLevel },
                         "seed \(seed): invalid outline \(levels)")
+                for task in tasks {
+                    guard let data = try await mac.imageData(task.id) else { continue }
+                    #expect(all.tasks[task.id.uuidString]?.image?.hash == AppDatabase.imageHash(data), "seed \(seed)")
+                }
             }
         }
     }

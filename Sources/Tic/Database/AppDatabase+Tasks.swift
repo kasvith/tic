@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import GRDB
 
@@ -126,9 +127,14 @@ extension AppDatabase {
     /// `INSERT OR REPLACE` swaps the whole row, so the crop columns fall back to their full-image defaults.
     private static func writeImage(_ data: Data, taskId: UUID, _ db: Database) throws {
         try db.execute(
-            sql: "INSERT OR REPLACE INTO taskImage (taskId, data, updatedAt) VALUES (?, ?, ?)",
-            arguments: [taskId, data, Date()]
+            sql: "INSERT OR REPLACE INTO taskImage (taskId, data, hash, updatedAt) VALUES (?, ?, ?, ?)",
+            arguments: [taskId, data, imageHash(data), Date()]
         )
+    }
+
+    /// SHA-256 of an image's bytes, hex: its identity across Macs and its file name in the sync folder.
+    static func imageHash(_ data: Data) -> String {
+        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 
     /// Targeted write of just an image's crop, so it can't race a replace or a task text commit.
@@ -174,13 +180,14 @@ extension AppDatabase {
         }
     }
 
-    /// Emits the crop of every image in a note, keyed by task id. Deliberately never selects `data`, so
-    /// the blobs are only read on demand (`taskImageData`).
-    func observeTaskImageCrops(noteId: UUID) -> AsyncValueObservation<[UUID: CGRect]> {
+    /// Emits the crop and content hash of every image in a note, keyed by task id. Deliberately never
+    /// selects `data`, so the blobs are only read on demand (`taskImageData`). The hash is what tells the
+    /// controller an image was replaced (say, from another Mac) when its crop didn't change.
+    func observeTaskImageCrops(noteId: UUID) -> AsyncValueObservation<[UUID: TaskImageState]> {
         ValueObservation
             .tracking { db in
                 let rows = try Row.fetchAll(db, sql: """
-                    SELECT i.taskId, i.cropX, i.cropY, i.cropW, i.cropH
+                    SELECT i.taskId, i.cropX, i.cropY, i.cropW, i.cropH, i.hash
                     FROM taskImage i JOIN task t ON t.id = i.taskId
                     WHERE t.noteId = ?
                     """, arguments: [noteId])
@@ -189,11 +196,17 @@ extension AppDatabase {
                         x: row["cropX"] as Double, y: row["cropY"] as Double,
                         width: row["cropW"] as Double, height: row["cropH"] as Double
                     )
-                    return (row["taskId"] as UUID, crop)
+                    return (row["taskId"] as UUID, TaskImageState(crop: crop, hash: row["hash"]))
                 })
             }
             .values(in: dbQueue)
     }
+}
+
+/// What `observeTaskImageCrops` reports per image: its crop, and its content hash (nil until computed).
+struct TaskImageState: Equatable, Sendable {
+    var crop: CGRect
+    var hash: String?
 }
 
 /// A targeted `indentLevel` change for one task — batched into `applyStructuralUpdate`.

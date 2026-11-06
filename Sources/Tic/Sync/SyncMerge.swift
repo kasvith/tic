@@ -3,11 +3,12 @@ import Foundation
 /// The pure maths of sync between Macs (no AppKit, no DB, no files), kept apart like `TaskOutline`
 /// so every rule is unit-tested in isolation:
 ///
-/// - `record` stamps what changed in this Mac's database since its last snapshot (the export).
+/// - `record` stamps what changed in this Mac's database since its last snapshot (the export). It
+///   records every list, synced or not, so a list switched back on merges with real stamps.
 /// - `merge` folds another Mac's snapshot in: newest stamp wins per field, delete always wins, a
 ///   note's outline is one value. Commutative and idempotent, so file order and repeats don't matter.
 /// - `resolve` says what a snapshot means for the database, and `changes` diffs that against what the
-///   database holds, so a cycle writes only what differs.
+///   database holds, so a cycle writes only what differs — and only to lists that sync.
 enum SyncMerge {
 
     // MARK: - Record (export)
@@ -15,8 +16,11 @@ enum SyncMerge {
     /// Stamps every synced field whose database value differs from what `snapshot` resolves to, adds
     /// new notes/tasks, and marks missing ones deleted. Comparing against `resolve(snapshot)` (not the
     /// raw registers) means a value this Mac had to adjust on apply — a normalised outline, an
-    /// unreadable colour — isn't mistaken for a local edit.
-    static func record(_ local: SyncLocal, into snapshot: SyncSnapshot, now: Int64) -> SyncSnapshot {
+    /// unreadable colour — isn't mistaken for a local edit. `deletedUnsynced` names the lists deleted
+    /// while their switch was off here (noted by a trigger at the moment of deletion).
+    static func record(
+        _ local: SyncLocal, into snapshot: SyncSnapshot, now: Int64, deletedUnsynced: Set<String> = []
+    ) -> SyncSnapshot {
         var s = snapshot
         let base = resolve(snapshot)
         let stamp = max(now, s.clock + 1)
@@ -50,30 +54,50 @@ enum SyncMerge {
             set(&note.outline, to: n.outline, was: old.outline)
             s.notes[id] = note
         }
+        for (id, n) in local.notes where s.deleted[id] == nil && n.isSynced != s.isShared(id) {
+            s.sharing[id] = Register(value: n.isSynced, stamp: stamp)
+            changed = true
+        }
 
         for (id, t) in local.tasks where s.deleted[id] == nil && s.deleted[t.noteId] == nil {
             guard var task = s.tasks[id], let old = base.tasks[id] else {
                 s.tasks[id] = SyncTask(
                     noteId: t.noteId, createdAt: t.createdAt,
                     text: Register(value: t.text, stamp: stamp),
-                    done: Register(value: t.done, stamp: stamp)
+                    done: Register(value: t.done, stamp: stamp),
+                    image: Register(value: t.image, stamp: stamp)
                 )
                 changed = true
                 continue
             }
             set(&task.text, to: t.text, was: old.text)
             set(&task.done, to: t.done, was: old.done)
+            set(&task.image, to: t.image, was: old.image)
             s.tasks[id] = task
         }
 
+        // A list deleted while it synced is deleted everywhere. One deleted while it didn't only leaves
+        // this Mac: if the others still think it syncs (switched off moments before the delete, not yet
+        // recorded), they're told it doesn't, so they keep their copies.
+        var localOnly = Set<String>()
         for id in Array(s.notes.keys) where local.notes[id] == nil {
+            if deletedUnsynced.contains(id) {
+                if s.isShared(id) { s.sharing[id] = Register(value: false, stamp: stamp) }
+                localOnly.insert(id)
+            } else if s.isShared(id) {
+                s.deleted[id] = stamp
+            } else {
+                localOnly.insert(id)   // never published as synced (or switched on and deleted at once)
+            }
             s.notes[id] = nil
-            s.deleted[id] = stamp
             changed = true
         }
-        for id in Array(s.tasks.keys) where local.tasks[id] == nil {
+        // A task is marked deleted only if its list ever synced (so the others can act on it, now or
+        // when the list syncs again) — not when its whole list left only this Mac.
+        for (id, t) in s.tasks where local.tasks[id] == nil {
+            let everSynced = s.sharing[t.noteId] != nil || s.deleted[t.noteId] != nil
+            if everSynced && !localOnly.contains(t.noteId) { s.deleted[id] = stamp }
             s.tasks[id] = nil
-            s.deleted[id] = stamp
             changed = true
         }
 
@@ -100,6 +124,9 @@ enum SyncMerge {
         for (id, theirs) in other.tasks where out.deleted[id] == nil {
             out.tasks[id] = out.tasks[id].map { merge($0, theirs) } ?? theirs
         }
+        for (id, theirs) in other.sharing where out.deleted[id] == nil {
+            out.sharing[id] = out.sharing[id].map { pick($0, theirs) } ?? theirs
+        }
 
         // A task added on one Mac to a list deleted on the other goes with its list.
         out.tasks = out.tasks.filter { out.notes[$0.value.noteId] != nil }
@@ -120,7 +147,7 @@ enum SyncMerge {
 
     static func merge(_ a: SyncTask, _ b: SyncTask) -> SyncTask {
         SyncTask(noteId: a.noteId, createdAt: min(a.createdAt, b.createdAt),
-                 text: pick(a.text, b.text), done: pick(a.done, b.done))
+                 text: pick(a.text, b.text), done: pick(a.done, b.done), image: pick(a.image, b.image))
     }
 
     /// Newest stamp wins. Equal stamps with different values (two Macs, same millisecond) fall back to
@@ -168,7 +195,7 @@ enum SyncMerge {
         var members: [String: Set<String>] = [:]
         for (id, t) in snapshot.tasks where snapshot.notes[t.noteId] != nil {
             out.tasks[id] = SyncLocal.TaskFields(noteId: t.noteId, createdAt: t.createdAt,
-                                                 text: t.text.value, done: t.done.value)
+                                                 text: t.text.value, done: t.done.value, image: t.image.value)
             members[t.noteId, default: []].insert(id)
         }
         for (id, n) in snapshot.notes {
@@ -179,7 +206,8 @@ enum SyncMerge {
                 material: (NoteMaterial(rawValue: n.material.value) ?? .solid).rawValue,
                 hideCompleted: n.hideCompleted.value,
                 moveCompletedToBottom: n.moveCompletedToBottom.value,
-                outline: effectiveOutline(n.outline.value, members: members[id] ?? [], tasks: out.tasks)
+                outline: effectiveOutline(n.outline.value, members: members[id] ?? [], tasks: out.tasks),
+                isSynced: snapshot.isShared(id)
             )
         }
         return out
@@ -202,32 +230,41 @@ enum SyncMerge {
 
     // MARK: - Changes
 
-    /// The writes that turn `old` (the database) into `new` (a resolved snapshot). Tasks of a deleted
-    /// note aren't listed: the foreign-key cascade removes them with it.
-    static func changes(from old: SyncLocal, to new: SyncLocal) -> SyncChanges {
+    /// The writes that turn `old` (the database) into `new` (a resolved snapshot). Content changes only
+    /// ever touch lists that sync; for one that doesn't, only its switch can change. A list arrives
+    /// only if it syncs, and deletions follow `deleted` — the markers only synced things get. Tasks of
+    /// a deleted note aren't listed: the foreign-key cascade removes them with it.
+    static func changes(from old: SyncLocal, to new: SyncLocal, deleted: [String: Int64]) -> SyncChanges {
         var c = SyncChanges()
-        for id in old.notes.keys where new.notes[id] == nil { c.deletedNotes.append(id) }
-        for (id, t) in old.tasks where new.tasks[id] == nil && new.notes[t.noteId] != nil {
-            c.deletedTasks.append(id)
-        }
+        for id in old.notes.keys where deleted[id] != nil { c.deletedNotes.append(id) }
         for (id, n) in new.notes {
             guard let o = old.notes[id] else {
-                c.insertedNotes.append(id)
-                c.outlines.append(id)
+                if n.isSynced { c.insertedNotes.append(id); c.outlines.append(id) }
                 continue
             }
+            if o.isSynced != n.isSynced { c.syncFlags.append(id) }
+            guard n.isSynced else { continue }
             if o.title != n.title || o.color != n.color || o.material != n.material
                 || o.hideCompleted != n.hideCompleted || o.moveCompletedToBottom != n.moveCompletedToBottom {
                 c.updatedNotes.append(id)
             }
             if o.outline != n.outline { c.outlines.append(id) }
         }
-        for (id, t) in new.tasks {
-            guard let o = old.tasks[id] else { c.insertedTasks.append(id); continue }
+        let synced = { (noteId: String) in new.notes[noteId]?.isSynced == true }
+        for (id, t) in old.tasks where deleted[id] != nil && deleted[t.noteId] == nil && synced(t.noteId) {
+            c.deletedTasks.append(id)
+        }
+        for (id, t) in new.tasks where synced(t.noteId) {
+            guard let o = old.tasks[id] else {
+                c.insertedTasks.append(id)
+                if t.image != nil { c.images.append(id) }
+                continue
+            }
             if o.text != t.text || o.done != t.done { c.updatedTasks.append(id) }
+            if o.image != t.image { c.images.append(id) }
         }
         c.deletedNotes.sort(); c.deletedTasks.sort(); c.insertedNotes.sort(); c.updatedNotes.sort()
-        c.insertedTasks.sort(); c.updatedTasks.sort(); c.outlines.sort()
+        c.syncFlags.sort(); c.insertedTasks.sort(); c.updatedTasks.sort(); c.images.sort(); c.outlines.sort()
         return c
     }
 }

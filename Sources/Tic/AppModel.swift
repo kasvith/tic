@@ -37,6 +37,7 @@ final class AppModel {
         self.mcp = MCPService(database: db)
         let support = (try? AppDatabase.supportDirectory()) ?? FileManager.default.temporaryDirectory
         self.sync = FolderSync(database: db, stateURL: support.appendingPathComponent("sync-state.json"))
+        windows.sync = sync
         NSLog("[Tic] Database ready at \(db.path)")
         mcp.onConnectionCountChange = { [weak self] count in
             Task { @MainActor in self?.mcpConnections = count }
@@ -95,6 +96,11 @@ final class AppModel {
     func showAll() {
         windows.showAll()
         NSApp.activate()
+    }
+
+    /// Whether a list syncs with the user's other Macs (Settings › Sync's list of lists).
+    func setSynced(_ note: Note, _ on: Bool) {
+        Task { [database] in try? await database.updateNoteSynced(id: note.id, isSynced: on) }
     }
 
     /// Permanently delete a note (and its tasks, via the FK cascade). Removed from the list

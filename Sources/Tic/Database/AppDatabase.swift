@@ -119,6 +119,26 @@ final class AppDatabase: Sendable {
             }
         }
 
+        // Sync between Macs is per list and off until chosen; an image's content hash names its file in
+        // the sync folder (filled in on write, or lazily by the first sync for images saved before this).
+        migrator.registerMigration("v6_sync") { db in
+            try db.alter(table: "note") { t in
+                t.add(column: "isSynced", .boolean).notNull().defaults(to: false)
+            }
+            try db.alter(table: "taskImage") { t in
+                t.add(column: "hash", .text)
+            }
+            // Lists deleted while not synced, noted at the moment of deletion: a sync switched off just
+            // before the delete may not have been recorded yet, and only this Mac's copy should go.
+            try db.create(table: "syncLocalDelete") { t in
+                t.primaryKey("noteId", .blob).notNull()
+            }
+            try db.execute(sql: """
+                CREATE TRIGGER note_deleted_unsynced AFTER DELETE ON note WHEN OLD.isSynced = 0
+                BEGIN INSERT OR IGNORE INTO syncLocalDelete (noteId) VALUES (OLD.id); END
+                """)
+        }
+
         return migrator
     }
 
@@ -227,6 +247,13 @@ final class AppDatabase: Sendable {
                 sql: "UPDATE note SET isOpen = ? WHERE id = ?",
                 arguments: [isOpen, id]
             )
+        }
+    }
+
+    /// Targeted write of whether a list syncs with the user's other Macs (Settings › Sync, or ⋯).
+    func updateNoteSynced(id: UUID, isSynced: Bool) async throws {
+        try await dbQueue.write { db in
+            try db.execute(sql: "UPDATE note SET isSynced = ? WHERE id = ?", arguments: [isSynced, id])
         }
     }
 

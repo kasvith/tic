@@ -355,7 +355,7 @@ of our own (accounts, hosting, breaks local-only), LAN peer-to-peer (the Macs ar
 
 ```
 <sync folder>/devices/<deviceId>.json   ← each Mac writes only its own file
-<sync folder>/images/<sha256>.png       ← later; immutable, named by content
+<sync folder>/images/<sha256>.png       ← immutable, named by content
 ```
 
 - **Single writer per file**, so a sync service never sees a write conflict (no "conflicted copy").
@@ -382,14 +382,19 @@ Per-field registers mean a tick on one Mac and a text edit on the other both sur
 one register means two reorders never interleave into a jumble. Files carry a `schema` number — a
 Mac that sees a newer one skips it and asks to update Tic.
 
+- **Sync is per list and opt-in.** New lists stay on their Mac until switched on (⋯ › Sync, or the
+  list of lists in Settings › Sync). The switch is itself a register: off on one Mac is off on all,
+  every Mac keeps its copy, and only synced lists are written to the folder. Every Mac keeps recording
+  all its lists locally, so switching a list back on merges the copies field by field. A list deleted
+  while synced is deleted everywhere; one deleted while not synced only on that Mac (noted by a trigger
+  at deletion time). The note's sync mark shows only while a sync touches it (orange while the folder
+  can't be reached), and ⋯ has Sync Now.
 - A list **created on the other Mac arrives closed** and shows up in the menu-bar Lists; opening it
   makes it open on that Mac from then on.
 - Settings › Sync lists each other Mac with **"Latest changes <time>"** — the real risk with
   one-at-a-time use is the laptop lid closing before its upload finishes, and this lets the user see
   whether changes arrived. Tic also writes pending edits at once when the Mac goes to sleep.
-- Each Mac's welcome notes have their own ids, so after a first sync the other Mac's copies show up
-  (closed) in the Lists menu; delete the extras. Fixed ids were rejected: a new install's pristine
-  copy would carry newer stamps and undo edits made to the welcome note on the older Mac.
+- Welcome notes never sync unless switched on, so nothing is duplicated.
 
 **Accepted limits** (rare for one person on one Mac at a time): the same task's text edited on both
 Macs before a sync → one version wins; a parent ticked on one Mac while a child is added under it on
@@ -405,7 +410,7 @@ shared live with other people.
 2. `SyncSnapshot` + `SyncMerge` (pure, unit-tested) and the export/import loop (`FolderSync`),
    notes + tasks only, set up in a new **Settings window** (General · Sync · AI Agents), which also
    takes over Launch at Login, update-check frequency, and the MCP setup window. *(Built.)*
-3. Images as content-addressed files.
+3. Images as content-addressed files (`images/<sha256>.png`), and per-list opt-in. *(Built.)*
 
 ## Open follow-ups (post-MVP, not built now)
 

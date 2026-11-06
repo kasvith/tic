@@ -13,6 +13,8 @@ final class NoteController {
     private(set) var tasks: [TaskItem] = []
     /// The crop of each task's image, keyed by task id — a key's presence means the task has an image.
     private(set) var imageCrops: [UUID: CGRect] = [:]
+    /// Each image's content hash, to spot a replaced image whose crop didn't change.
+    @ObservationIgnored private var imageHashes: [UUID: String] = [:]
     /// Downsampled, uncropped bitmaps for drawing images on the note, loaded lazily per task.
     private(set) var thumbnails: [UUID: CGImage] = [:]
 
@@ -71,9 +73,8 @@ final class NoteController {
         imageObservation?.cancel()
         imageObservation = Task { [weak self, db, noteID] in
             do {
-                for try await crops in db.observeTaskImageCrops(noteId: noteID) {
-                    self?.imageCrops = crops
-                    self?.syncThumbnails()
+                for try await images in db.observeTaskImageCrops(noteId: noteID) {
+                    self?.applyObservedImages(images)
                 }
             } catch {
                 NSLog("[Tic] image observation ended for \(noteID): \(error)")
@@ -508,5 +509,28 @@ extension NoteController {
     /// Creates a new, separate note.
     func requestNewNote() {
         onNewNote?()
+    }
+}
+
+extension NoteController {
+    /// New crops, plus a fresh thumbnail for any image whose content changed under the same task — a
+    /// replacement made on another Mac, where the crop may well be the same. The old thumbnail stays up
+    /// until the new one is decoded.
+    fileprivate func applyObservedImages(_ images: [UUID: TaskImageState]) {
+        let replaced = images.compactMap { id, image -> UUID? in
+            guard let hash = image.hash, let known = imageHashes[id], known != hash else { return nil }
+            return id
+        }
+        imageHashes = images.compactMapValues(\.hash)
+        imageCrops = images.mapValues(\.crop)
+        syncThumbnails()
+        for id in replaced where !loadingThumbnails.contains(id) { loadThumbnail(id) }
+    }
+
+    /// Switches sync with the user's other Macs on or off for this list (⋯ › Sync).
+    func toggleSynced() {
+        note.isSynced.toggle()
+        let id = noteID, on = note.isSynced
+        Task { [db] in try? await db.updateNoteSynced(id: id, isSynced: on) }
     }
 }

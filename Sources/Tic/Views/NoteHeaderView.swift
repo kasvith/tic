@@ -19,8 +19,19 @@ struct NoteHeaderView: View {
 
     @State private var showOptions = false
     @State private var showClearConfirm = false
+    /// Bumped to flash the sync mark (a cycle touched this list, or Sync Now was pressed).
+    @State private var syncPulse = 0
+    @State private var showsSyncMark = false
+    /// Nil outside the app (tests, previews), where notes never show sync.
+    @Environment(FolderSync.self) private var sync: FolderSync?
+    @Environment(\.openSettings) private var openSettings
 
     private var note: Note { controller.note }
+
+    /// This list syncs (sync is on in Settings and for this list).
+    private var listSyncs: Bool { note.isSynced && sync?.isEnabled == true }
+    /// Why this list can't sync right now, if it can't.
+    private var syncTrouble: String? { listSyncs ? sync?.problem : nil }
 
     /// Controls stay up while the options popover is open: it's a separate window, so the pointer leaves
     /// the note to reach it.
@@ -30,6 +41,7 @@ struct NoteHeaderView: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
                 titleField
+                syncMark
                 Spacer(minLength: 0)
                 if isRolledUp { remainingCount }
                 if showsControls { controls.transition(.opacity) }
@@ -49,6 +61,28 @@ struct NoteHeaderView: View {
         .help(isRolledUp ? "Drag to move · double-click to expand" : "")
         .task(id: controller.renameRequest) {   // also runs on appear, for a list that opens renaming
             if controller.renameRequest > 0, !isRolledUp { isRenaming = true }
+        }
+        .onChange(of: sync?.activity[note.id]) { _, _ in if listSyncs { syncPulse += 1 } }
+        .task(id: syncPulse) {   // the mark shows while a sync touches the list, then fades
+            guard syncPulse > 0 else { return }
+            withAnimation(.easeOut(duration: 0.2)) { showsSyncMark = true }
+            try? await Task.sleep(for: .seconds(1.6))
+            while sync?.isSyncing == true, !Task.isCancelled { try? await Task.sleep(for: .milliseconds(200)) }
+            if !Task.isCancelled { withAnimation(.easeIn(duration: 0.4)) { showsSyncMark = false } }
+        }
+    }
+
+    /// Hidden at rest. It appears while a sync sends or brings this list's changes, then fades; it stays,
+    /// in orange, only while sync can't reach its folder.
+    @ViewBuilder private var syncMark: some View {
+        let trouble = syncTrouble
+        if listSyncs, trouble != nil || showsSyncMark {
+            Image(systemName: trouble == nil
+                  ? "arrow.triangle.2.circlepath" : "exclamationmark.arrow.triangle.2.circlepath")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(trouble == nil ? theme.secondary : Color.orange)
+                .help(trouble ?? "Syncing with your other Macs")
+                .transition(.opacity)
         }
     }
 
@@ -219,6 +253,24 @@ extension NoteHeaderView {
                     get: { note.moveCompletedToBottom },
                     set: { _ in controller.toggleMoveCompletedToBottom() }
                 ))
+                if let sync {
+                    Toggle("Sync", isOn: Binding(
+                        get: { note.isSynced && sync.isEnabled },
+                        set: { _ in controller.toggleSynced() }
+                    ))
+                    .disabled(!sync.isEnabled)
+                    .help("Keep this list the same on your other Macs")
+                    if !sync.isEnabled {
+                        Button("Turn on sync in Settings › Sync first.") {
+                            showOptions = false
+                            UserDefaults.standard.set(SettingsTab.sync.rawValue, forKey: SettingsTab.storageKey)
+                            NSApp.activate()
+                            openSettings()
+                        }
+                        .buttonStyle(.link)
+                        .font(.caption)
+                    }
+                }
             }
             .toggleStyle(.switch)
             .controlSize(.small)
@@ -227,6 +279,12 @@ extension NoteHeaderView {
             Divider()
 
             VStack(alignment: .leading, spacing: 8) {
+                if listSyncs {
+                    popoverAction("Sync Now", systemImage: "arrow.triangle.2.circlepath") {
+                        syncPulse += 1
+                        sync?.syncNow()
+                    }
+                }
                 popoverAction("New List", systemImage: "plus") { controller.requestNewNote() }
                 // A "tidy up" wand rather than a trash can — this clears finished items, it isn't a delete.
                 let done = controller.completedCount

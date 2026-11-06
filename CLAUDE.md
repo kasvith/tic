@@ -122,17 +122,35 @@ panels**, and a few responsibilities are deliberately split across the AppKit/Sw
   registers), so values this Mac adjusted on apply never look like local edits.
   `AppDatabase.syncCycle` does record → merge → apply in **one write transaction**, touching only
   synced columns: frame, `isOpen`, collapsed, float, all-Spaces and the note's own `sortIndex` stay
-  per Mac, and lists from another Mac arrive **closed**. `FolderSync` (`@MainActor`) runs a cycle at
+  per Mac, and lists from another Mac arrive **closed**.
+  **Per list, opt-in** (`note.isSynced`, off for new lists): the switch is itself a register
+  (`sharing`), so off on one Mac is off on all, each keeping its copy. Every Mac still *records* every
+  list (`sync-state.json` holds them all), but the folder file is `published()` — synced lists only —
+  so a list switched back on merges with real stamps. Deletes are scoped: a list deleted while synced
+  is tombstoned everywhere; one deleted while not synced only leaves this Mac (the `syncLocalDelete`
+  table, filled by an `AFTER DELETE` trigger, notes the switch **at the moment of deletion** — a
+  switch-off followed at once by a delete wasn't recorded yet and used to delete everywhere; the fuzz
+  run caught it). Task tombstones are made only for lists that ever synced.
+  **Images** travel as `images/<sha256>.png` (immutable, named by `taskImage.hash`, filled on write or
+  lazily by the first sync); a task's `image` register holds the hash and crop. A picture whose file
+  hasn't arrived keeps this Mac's own register for that cycle (`waitingImages`), so it never reads as a
+  removal; files are loaded only when their hash checks out, and unreferenced ones are deleted after a
+  week. `observeTaskImageCrops` carries the hash so a replacement with the same crop reloads its thumbnail.
+  **UI:** ⋯ › Sync and Sync Now on the note; the header's sync mark shows only while a cycle touches the
+  list (`FolderSync.activity`) and stays, orange, while there's a `problem`. `NoteWindowManager.sync` is
+  injected into note views as an optional environment object (nil in tests). `FolderSync` (`@MainActor`) runs a cycle at
   start, 2 s after a synced edit (`observeSyncedChanges`, a column-limited region observation, so frame
   drags don't trigger it), every 30 s, on wake, and at once on sleep; file IO is off the main actor
   (an iCloud file may download as it's read). It keeps its own snapshot in `sync-state.json` beside the
   DB and its device id in the `syncDeviceID` default (issued once, so a lost state file never leaves a
   ghost Mac in the folder), refuses to recreate a folder whose parent vanished (an unmounted Dropbox reads as "can't
   reach"), and skips files with a newer `schema` — bump it when the format changes **or `NoteColor` /
-  `NoteMaterial` gains a case**. Images don't sync yet. Off by default (`syncEnabled` default).
+  `NoteMaterial` gains a case**. Off by default (`syncEnabled` default).
 - **Settings window (`SettingsView`)** — a SwiftUI `Settings` scene (⌘, and Tic › Settings… come
   free) with three `Form(.grouped)` tabs: General (Launch at Login, version, update frequency + Check
-  Now), Sync, AI Agents (the MCP switch and per-client snippets). The menu-bar item calls
+  Now), Sync (switch, folder, other Macs, and a switch per list), AI Agents (the MCP switch and
+  per-client snippets). The selected tab is the `settingsTab` default, so a note's "Turn on sync"
+  link can open straight to Sync. The menu-bar item calls
   `openSettings` after `NSApp.activate()`: a window opened from a menu-bar menu otherwise appears behind
   the frontmost app.
 - **App shell** — `TicApp` provides a `MenuBarExtra`; `main.swift` (not `@main`) routes `--mcp` to

@@ -28,6 +28,11 @@ final class FolderSync {
     /// Why sync isn't working right now, in words for the Settings window; nil when all is well.
     private(set) var problem: String?
     private(set) var lastSynced: Date?
+    /// A cycle is running (Sync Now shows its mark meanwhile).
+    private(set) var isSyncing = false
+    /// Per list, bumped each time a cycle sends or brings changes for it — what flashes a list's sync
+    /// mark. Only lists that sync ever appear here.
+    private(set) var activity: [UUID: Int] = [:]
 
     var deviceName: String { name }
     /// This Mac's id: issued once, persisted in defaults, and the name of its file in the folder.
@@ -42,7 +47,6 @@ final class FolderSync {
     @ObservationIgnored private let name: String
     @ObservationIgnored private let clock: @MainActor () -> Int64
     @ObservationIgnored private var snapshot: SyncSnapshot
-    @ObservationIgnored private var running = false
     @ObservationIgnored private var rerun = false
     @ObservationIgnored private var poller: Task<Void, Never>?
     @ObservationIgnored private var debounce: Task<Void, Never>?
@@ -181,12 +185,12 @@ final class FolderSync {
     /// One cycle; overlapping requests fold into a single re-run.
     func sync() async {
         guard isEnabled, let folder else { return }
-        if running { rerun = true; return }
-        running = true
+        if isSyncing { rerun = true; return }
+        isSyncing = true
         debounce?.cancel()
         debounce = nil
         await cycle(in: folder)
-        running = false
+        isSyncing = false
         if rerun {
             rerun = false
             await sync()
@@ -208,17 +212,34 @@ final class FolderSync {
         let usable = read.others.filter { $0.schema <= SyncSnapshot.schemaVersion }
         let now = clock()
         do {
-            let result = try await database.syncCycle(mine: snapshot, others: usable, now: now)
+            let images = try await fetchImages(for: usable, available: read.imageFiles, in: folder)
+            let result = try await database.syncCycle(mine: snapshot, others: usable, images: images, now: now)
             var next = result.snapshot
             next.name = name
             next.schema = SyncSnapshot.schemaVersion
-            let changed = !next.sameContent(as: snapshot) || next.name != snapshot.name
-            if changed { next.writtenAt = now }
-            if changed || !read.hasMine {
-                let file = Self.file(for: me, in: folder), state = stateURL, toWrite = next
-                try await Task.detached { try Self.write(toWrite, to: [file, state]) }.value
+            let publishedChanged = !next.published().sameContent(as: snapshot.published()) || next.name != snapshot.name
+            if publishedChanged { next.writtenAt = now }
+            let published = next.published()
+            let recordChanged = publishedChanged || !next.sameContent(as: snapshot) || next.clock != snapshot.clock
+
+            let file = Self.file(for: me, in: folder), state = stateURL, full = next
+            let writeFolder = publishedChanged || !read.hasMine
+            if recordChanged || writeFolder {
+                try await Task.detached {
+                    if recordChanged { try Self.write(full, to: state) }
+                    if writeFolder { try Self.write(published, to: file) }
+                }.value
+            }
+            for id in Self.touchedLists(from: snapshot.published(), to: published).compactMap(UUID.init(uuidString:)) {
+                activity[id, default: 0] += 1
             }
             snapshot = next
+            try await publishImages(of: published, existing: read.imageFiles, in: folder)
+            let referenced = Set(([published] + read.others)
+                .flatMap { $0.tasks.values.compactMap { $0.image.value?.hash } })
+            let imagesDir = Self.imagesFolder(folder)
+            await Task.detached { Self.removeUnusedImages(in: imagesDir, keeping: referenced) }.value
+
             if !result.changes.deletedNotes.isEmpty {
                 onNotesDeleted(result.changes.deletedNotes.compactMap(UUID.init(uuidString:)))
             }
@@ -238,21 +259,73 @@ final class FolderSync {
         }
     }
 
-    // MARK: - Files (off the main actor: an iCloud file may download as it's read)
-
-    private struct FolderRead: Sendable {
-        var others: [SyncSnapshot]
-        var hasMine: Bool
+    /// The lists whose published content changed between two cycles — a change sent from here or
+    /// taken from another Mac, either way.
+    nonisolated static func touchedLists(from old: SyncSnapshot, to new: SyncSnapshot) -> Set<String> {
+        var out = Set<String>()
+        for id in Set(old.notes.keys).union(new.notes.keys) where old.notes[id] != new.notes[id] { out.insert(id) }
+        for id in Set(old.tasks.keys).union(new.tasks.keys) where old.tasks[id] != new.tasks[id] {
+            if let note = new.tasks[id]?.noteId ?? old.tasks[id]?.noteId { out.insert(note) }
+        }
+        return out.filter { new.notes[$0] != nil }
     }
 
-    private nonisolated static func file(for device: String, in folder: URL) -> URL {
+    // MARK: - Images
+
+    /// The bytes of pictures another Mac added that this Mac lacks and is likely to take (its register
+    /// would win), read from `images/`. A file whose hash doesn't match — still downloading — is left out.
+    private func fetchImages(for others: [SyncSnapshot], available: Set<String>, in folder: URL) async throws
+        -> [String: Data] {
+        let local = try await database.syncImageHashes()
+        var wanted = Set<String>()
+        for other in others {
+            for (id, task) in other.tasks {
+                guard let image = task.image.value, !local.contains(image.hash), available.contains(image.hash)
+                else { continue }
+                if let ours = snapshot.tasks[id]?.image, SyncMerge.pick(ours, task.image) != task.image { continue }
+                wanted.insert(image.hash)
+            }
+        }
+        guard !wanted.isEmpty else { return [:] }
+        let dir = Self.imagesFolder(folder)
+        return await Task.detached { Self.loadImages(wanted, from: dir) }.value
+    }
+
+    /// Writes any picture this Mac publishes that isn't in the folder yet. Each file is named by its
+    /// content hash and never changes, so two Macs writing the same picture write the same bytes.
+    private func publishImages(of published: SyncSnapshot, existing: Set<String>, in folder: URL) async throws {
+        let missing = Set(published.tasks.values.compactMap { $0.image.value?.hash }).subtracting(existing)
+        for hash in missing {
+            guard let data = try await database.syncImageData(hash: hash) else { continue }
+            let url = Self.imagesFolder(folder).appendingPathComponent("\(hash).png")
+            try await Task.detached { try data.write(to: url, options: .atomic) }.value
+        }
+    }
+
+}
+
+// MARK: - Files (off the main actor: an iCloud file may download as it's read)
+
+extension FolderSync {
+    fileprivate struct FolderRead: Sendable {
+        var others: [SyncSnapshot]
+        var hasMine: Bool
+        /// Hashes of the picture files in `images/`.
+        var imageFiles: Set<String>
+    }
+
+    fileprivate nonisolated static func file(for device: String, in folder: URL) -> URL {
         folder.appendingPathComponent("devices", isDirectory: true).appendingPathComponent("\(device).json")
+    }
+
+    fileprivate nonisolated static func imagesFolder(_ folder: URL) -> URL {
+        folder.appendingPathComponent("images", isDirectory: true)
     }
 
     /// The other Macs' snapshots. A missing folder is created only when its parent exists, so an
     /// unmounted Dropbox reads as "can't reach" rather than quietly syncing to a local folder. An
     /// unreadable file (mid-download, say) is skipped and read on the next cycle.
-    private nonisolated static func read(_ folder: URL, excluding me: String) throws -> FolderRead {
+    fileprivate nonisolated static func read(_ folder: URL, excluding me: String) throws -> FolderRead {
         let fm = FileManager.default
         var isDir: ObjCBool = false
         if !fm.fileExists(atPath: folder.path, isDirectory: &isDir) {
@@ -265,6 +338,7 @@ final class FolderSync {
         }
         let devices = folder.appendingPathComponent("devices", isDirectory: true)
         try fm.createDirectory(at: devices, withIntermediateDirectories: true)
+        try fm.createDirectory(at: imagesFolder(folder), withIntermediateDirectories: true)
         var others: [SyncSnapshot] = []
         var hasMine = false
         for url in try fm.contentsOfDirectory(at: devices, includingPropertiesForKeys: nil)
@@ -276,14 +350,42 @@ final class FolderSync {
                 others.append(snap)
             }
         }
-        return FolderRead(others: others, hasMine: hasMine)
+        let images = Set(try fm.contentsOfDirectory(atPath: imagesFolder(folder).path)
+            .filter { $0.hasSuffix(".png") }.map { String($0.dropLast(4)) })
+        return FolderRead(others: others, hasMine: hasMine, imageFiles: images)
     }
 
-    private nonisolated static func write(_ snapshot: SyncSnapshot, to urls: [URL]) throws {
+    fileprivate nonisolated static func write(_ snapshot: SyncSnapshot, to url: URL) throws {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
-        let data = try encoder.encode(snapshot)
-        for url in urls { try data.write(to: url, options: .atomic) }
+        try encoder.encode(snapshot).write(to: url, options: .atomic)
+    }
+
+    fileprivate nonisolated static func loadImages(_ hashes: Set<String>, from dir: URL) -> [String: Data] {
+        var out: [String: Data] = [:]
+        for hash in hashes {
+            guard let data = try? Data(contentsOf: dir.appendingPathComponent("\(hash).png")),
+                  AppDatabase.imageHash(data) == hash else { continue }
+            out[hash] = data
+        }
+        return out
+    }
+
+    /// Deletes picture files that no Mac's file refers to any more — but only a week after they were
+    /// last written, so a Mac whose newer file hasn't arrived yet can't lose a picture it still uses.
+    nonisolated static func removeUnusedImages(in dir: URL, keeping referenced: Set<String>,
+                                               olderThan age: TimeInterval = 7 * 24 * 60 * 60) {
+        let fm = FileManager.default
+        let dateKey = URLResourceKey.contentModificationDateKey
+        guard let files = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: [dateKey]) else { return }
+        let cutoff = Date().addingTimeInterval(-age)
+        for url in files where url.pathExtension == "png" {
+            let hash = url.deletingPathExtension().lastPathComponent
+            guard !referenced.contains(hash),
+                  let modified = try? url.resourceValues(forKeys: [dateKey]).contentModificationDate,
+                  modified < cutoff else { continue }
+            try? fm.removeItem(at: url)
+        }
     }
 
     // MARK: - Defaults

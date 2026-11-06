@@ -10,13 +10,20 @@ struct SyncTests {
 
     private func snapshot(_ device: String) -> SyncSnapshot { SyncSnapshot(device: device, name: device) }
 
-    private func note(_ title: String, _ outline: [OutlineEntry] = []) -> SyncLocal.NoteFields {
+    private func note(_ title: String, _ outline: [OutlineEntry] = [], synced: Bool = true) -> SyncLocal.NoteFields {
         .init(createdAt: 1, title: title, color: "yellow", material: "solid",
-              hideCompleted: false, moveCompletedToBottom: false, outline: outline)
+              hideCompleted: false, moveCompletedToBottom: false, outline: outline, isSynced: synced)
     }
 
     private func task(_ noteId: String, _ text: String, done: Bool = false) -> SyncLocal.TaskFields {
-        .init(noteId: noteId, createdAt: 1, text: text, done: Completion(isDone: done, completedAt: done ? 5 : nil))
+        .init(noteId: noteId, createdAt: 1, text: text, done: Completion(isDone: done, completedAt: done ? 5 : nil),
+              image: nil)
+    }
+
+    private func syncTask(_ noteId: String, _ text: String, stamp: Int64) -> SyncTask {
+        SyncTask(noteId: noteId, createdAt: 2, text: Register(value: text, stamp: stamp),
+                 done: Register(value: Completion(isDone: false, completedAt: nil), stamp: stamp),
+                 image: Register(value: nil, stamp: stamp))
     }
 
     private func entries(_ ids: String...) -> [OutlineEntry] { ids.map { OutlineEntry(id: $0, level: 0) } }
@@ -99,8 +106,7 @@ struct SyncTests {
         var b = basic("B")
         a.notes["N"]?.title = Register(value: "Work", stamp: 400)
         b.notes["N"]?.title = Register(value: "Home", stamp: 400)        // same millisecond
-        b.tasks["c"] = SyncTask(noteId: "N", createdAt: 2, text: Register(value: "Pay rent", stamp: 410),
-                                done: Register(value: Completion(isDone: false, completedAt: nil), stamp: 410))
+        b.tasks["c"] = syncTask("N", "Pay rent", stamp: 410)
         a.deleted["b"] = 420
         a.tasks["b"] = nil
 
@@ -138,8 +144,7 @@ struct SyncTests {
         work.tasks = [:]
         work.deleted = ["N": 200, "a": 200, "b": 200]
         var home = basic("B")
-        home.tasks["c"] = SyncTask(noteId: "N", createdAt: 3, text: Register(value: "New", stamp: 300),
-                                   done: Register(value: Completion(isDone: false, completedAt: nil), stamp: 300))
+        home.tasks["c"] = syncTask("N", "New", stamp: 300)
         let merged = SyncMerge.merge(home, work)
         #expect(merged.notes.isEmpty && merged.tasks.isEmpty)
     }
@@ -163,7 +168,7 @@ struct SyncTests {
     @Test("a list made on one Mac arrives on the other closed, with its tasks, ticks and nesting")
     func roundTrip() async throws {
         let work = try makeDB(), home = try makeDB()
-        let list = try await work.insertNewNote(Note(title: "This week", color: .pink))
+        let list = try await work.insertNewNote(Note(title: "This week", color: .pink, isSynced: true))
         try await work.insertTask(TaskItem(noteId: list.id, text: "Send slides"))
         try await work.insertTask(
             TaskItem(noteId: list.id, text: "Draft", isDone: true, indentLevel: 1, completedAt: Date()))
@@ -190,7 +195,7 @@ struct SyncTests {
     @Test("edits made on both Macs before a sync merge field by field; frames and open state stay put")
     func bothSidesEdit() async throws {
         let work = try makeDB(), home = try makeDB()
-        let list = try await work.insertNewNote(Note(title: "This week"))
+        let list = try await work.insertNewNote(Note(title: "This week", isSynced: true))
         try await work.insertTask(TaskItem(noteId: list.id, text: "Email Sam"))
         let w1 = try await work.syncCycle(mine: snapshot("A"), others: [], now: 1_000)
         let h1 = try await home.syncCycle(mine: snapshot("B"), others: [w1.snapshot], now: 2_000)
@@ -224,7 +229,7 @@ struct SyncTests {
     @Test("deleting a list on one Mac deletes it on the other")
     func deleteTravels() async throws {
         let work = try makeDB(), home = try makeDB()
-        let list = try await work.insertNewNote(Note(title: "Old"))
+        let list = try await work.insertNewNote(Note(title: "Old", isSynced: true))
         try await work.insertTask(TaskItem(noteId: list.id, text: "x"))
         let w1 = try await work.syncCycle(mine: snapshot("A"), others: [], now: 1_000)
         let h1 = try await home.syncCycle(mine: snapshot("B"), others: [w1.snapshot], now: 2_000)
@@ -261,7 +266,7 @@ struct FolderSyncTests {
         let (workDB, work) = try mac("Work MacBook", folder: folder)
         let (homeDB, home) = try mac("Home iMac", folder: folder)
 
-        let list = try await workDB.insertNewNote(Note(title: "This week"))
+        let list = try await workDB.insertNewNote(Note(title: "This week", isSynced: true))
         try await workDB.insertTask(TaskItem(noteId: list.id, text: "Send slides"))
         await work.sync()
         await home.sync()
@@ -301,6 +306,7 @@ struct FolderSyncTests {
         defer { try? FileManager.default.removeItem(at: root) }
         var future = SyncSnapshot(device: "FUTURE", name: "Home iMac")
         future.schema = SyncSnapshot.schemaVersion + 1
+        future.sharing["N"] = Register(value: true, stamp: 1)
         future.notes["N"] = SyncNote(
             createdAt: 1, title: Register(value: "From the future", stamp: 1),
             color: Register(value: "yellow", stamp: 1),
