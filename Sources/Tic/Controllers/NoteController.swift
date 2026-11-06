@@ -133,6 +133,10 @@ final class NoteController {
     private(set) var pendingThumbnail: CGImage?
     /// Bumped to ask the quick-add field to take the keyboard (e.g. a paste with nothing focused).
     private(set) var quickAddFocusRequest = 0
+    /// Bumped to ask the header to start renaming the note (a brand-new list starts out that way).
+    private(set) var renameRequest = 0
+
+    func requestRename() { renameRequest += 1 }
 
     /// Holds a pasted image in the quick-add, replacing any already waiting, and focuses the field.
     func stageImage(_ data: Data) {

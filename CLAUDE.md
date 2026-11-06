@@ -172,7 +172,13 @@ panels**, and a few responsibilities are deliberately split across the AppKit/Sw
   for in-app controls and won't sample the desktop behind a window.
 - **The window drags only by its header.** `isMovableByWindowBackground` is off; `WindowMoveArea`
   (an `NSViewRepresentable` calling `window.performDrag`) is placed behind the header / collapsed
-  bar. This is what lets task rows be dragged to **reorder** without moving the window.
+  bar. This is what lets task rows be dragged to **reorder** without moving the window. The title is
+  plain text **inside** that handle, not a click target: the header row sits in the window's hidden
+  title-bar strip, where a title taking clicks let a double-click through to macOS's zoom. Renaming is
+  ⋯ › Rename… (or a new list), via `NoteController.requestRename`, which swaps in a field.
+- **The hover reveal is an AppKit tracking area (`HoverArea`), not `.onHover`.** SwiftUI's hover often
+  didn't reveal the header controls until the note had been clicked into; `HoverArea`'s `.activeAlways`
+  tracking area goes by geometry alone. (Synthetic `mouseMoved` events drive neither, so tests can't.)
 - **Reorder uses a direct `DragGesture`, not system `.onDrag`.** System drag has a sluggish
   pickup; the gesture is immediate. The dragged block (row + subtree) lifts into an overlay
   (`LiftedRow`) and its head row turns into a ghost `DropPlaceholder` at the drop slot and level;
@@ -189,9 +195,21 @@ panels**, and a few responsibilities are deliberately split across the AppKit/Sw
   are pure in `TaskOutline` (`dropLevels`: never adopt the row below; `levelSteps`: ~70% of an
   indent step to re-nest). Safe on macOS because scrolling is the wheel/trackpad, so click-drag
   doesn't fight the `ScrollView`.
-- **Roll-up keeps the top edge fixed.** `NoteWindowManager.setCollapsed` resizes the panel to
-  `NoteLayout.collapsedHeight`, remembers the real height in `expandedHeights`, and
-  `scheduleFrameSave` persists the *expanded* height/origin while collapsed so nothing is lost.
+- **Roll-up keeps the top edge fixed — or the bottom, near the screen's bottom.**
+  `NoteWindowManager.setCollapsed` resizes the panel to `NoteLayout.collapsedHeight` from the edge
+  `rolledFrame` picks (pure, tested) — and a bar let go near the bottom glides there too
+  (`NotePanel.performDrag` returns on mouse-up → `snapToBottom`) — remembers the real height in `expandedHeights`, and
+  `scheduleFrameSave` persists the *expanded* frame while collapsed so nothing is lost. The bar is
+  **frameless** (`NotePanel.setRolledUp`; it draws its own capsule) because macOS rounds a titled
+  window at a fixed 16pt that splits from a thin bar's fill. The bar **is** the note's top row
+  (`NoteHeaderView`: title + hover controls, `isRolledUp` adds the count and trims the controls), so the
+  roll is a pure window shade; `NoteView` drops the list only once the window is down to bar height
+  (`showsBar`). The roll is an `animator()` frame animation, not the blocking
+  `setFrame(_:display:animate:)` (SwiftUI only swapped the content after it); the system frame returns
+  before expanding and goes only after rolling up, since a titled window's shadow tracks a resize. The
+  bar has **no** shadow: a frameless window's traces the capsule with a dark rim that reads as a border. The content has `minHeight: 0` — the hosting view won't let the window be shorter than the
+  content's minimum (an expand jumped straight to ~150pt) — so the open note's minimum lives in
+  `windowWillResize`, which also locks the bar's height.
 - **Theming via roles, not raw colors.** `NoteColor.color(_:on:)` resolves a role
   (title/task/secondary/completed/checkbox) for a `Surface` (`.solid` uses per-theme tuned inks;
   `.glass` uses adaptive `.primary`/`.secondary`). Views read a resolved `NoteTheme`, never branch

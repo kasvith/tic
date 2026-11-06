@@ -52,7 +52,7 @@ struct ImageViewer: View {
         }
     }
 
-    /// Mirrors `NoteHeaderView`: a control strip, the title, and the accent rule — and it's the drag handle.
+    /// Dressed like a note's header: its controls, the title, and the accent rule — and it's the drag handle.
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {

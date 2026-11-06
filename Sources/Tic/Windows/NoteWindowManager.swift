@@ -91,6 +91,9 @@ final class NoteWindowManager: NSObject, NSWindowDelegate {
         panel.onPasteImage = { [weak controller] data in
             controller?.stageImage(data)
         }
+        panel.onDragEnded = { [weak self, weak panel] in
+            if let panel { self?.snapToBottom(panel) }
+        }
 
         place(panel)
         if makeKey {
@@ -124,6 +127,7 @@ final class NoteWindowManager: NSObject, NSWindowDelegate {
                 width: note.frameW, height: note.frameH
             )
             openNote(note)
+            controllers[note.id]?.requestRename()   // a new list starts with its name being typed
         } catch {
             NSLog("[Tic] newNote failed: \(error)")
         }
@@ -145,33 +149,49 @@ final class NoteWindowManager: NSObject, NSWindowDelegate {
         }
     }
 
-    /// Rolls a panel up to just its title bar (or back to its expanded height), keeping the top
-    /// edge fixed. While collapsed the height is locked so it can't be resized into a sliver.
+    /// Rolls a panel up to just its title bar (or back to its expanded height), from the edge
+    /// `rolledFrame` picks. While collapsed the height is locked (`windowWillResize`).
     private func setCollapsed(_ panel: NotePanel, collapsed: Bool, animate: Bool) {
         let id = panel.noteID
         let current = panel.frame
-        let collapsedHeight = NoteLayout.collapsedHeight
-
         let targetHeight: CGFloat
         if collapsed {
-            if current.height > collapsedHeight { expandedHeights[id] = current.height }
-            targetHeight = collapsedHeight
-            panel.minSize = NSSize(width: panel.minSize.width, height: collapsedHeight)
-            panel.maxSize = NSSize(width: .greatestFiniteMagnitude, height: collapsedHeight)
+            if current.height > NoteLayout.collapsedHeight { expandedHeights[id] = current.height }
+            targetHeight = NoteLayout.collapsedHeight
         } else {
             targetHeight = expandedHeights[id] ?? max(current.height, 240)
             expandedHeights[id] = nil
-            panel.minSize = NSSize(width: panel.minSize.width, height: 160)
-            panel.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         }
-
-        let top = current.origin.y + current.height
-        let newFrame = NSRect(
-            x: current.origin.x, y: top - targetHeight,
-            width: current.width, height: targetHeight
-        )
-        panel.setFrame(newFrame, display: true, animate: animate)
+        let newFrame = Self.rolledFrame(current, toHeight: targetHeight, screens: Self.visibleFrames)
+        if collapsed { panel.makeFirstResponder(nil) }   // end any edit: the title stays visible in the bar
+        // The system frame (shadow, corners) tracks a resizing window, so it comes back before expanding and
+        // goes only once the bar is down to size.
+        if !collapsed { panel.setRolledUp(false) }
+        let finish: @MainActor () -> Void = { [weak self, weak panel] in
+            guard let panel, self?.controllers[id]?.note.isCollapsed == true else { return }   // not re-expanded
+            panel.setRolledUp(true)
+        }
+        guard animate else {
+            panel.setFrame(newFrame, display: true)
+            finish()
+            return
+        }
+        // Not `setFrame(_:display:animate:)`: that blocks, so SwiftUI swapped the bar for the note only
+        // once the window was already full height. The animator runs on the run loop, alongside the
+        // view, which drops its list once the window is down to the bar (`NoteView.showsBar`).
+        // ponytail: a re-toggle mid-roll remembers the in-between height; track the target if that bites.
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = Self.rollDuration
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            panel.animator().setFrame(newFrame, display: true)
+        } completionHandler: {
+            MainActor.assumeIsolated { finish() }
+        }
     }
+
+    private static let rollDuration: TimeInterval = 0.22
+
+    private static var visibleFrames: [CGRect] { NSScreen.screens.map(\.visibleFrame) }
 
     /// Puts a panel where its saved frame says, as long as some connected display shows it; otherwise
     /// parks it on the main display (nearest edge, same size). Runs at open and on every display
@@ -180,21 +200,14 @@ final class NoteWindowManager: NSObject, NSWindowDelegate {
     /// never persists: the saved frame stays the user's.
     private func place(_ panel: NotePanel) {
         guard let saved = savedFrames[panel.noteID], let main = NSScreen.main else { return }
-        let target = Self.placement(for: saved, screens: NSScreen.screens.map(\.visibleFrame), main: main.visibleFrame)
-        // Keep the live size (a rolled-up note sits at its collapsed height); align the top-left corner.
+        let screens = Self.visibleFrames
+        let target = Self.placement(for: saved, screens: screens, main: main.visibleFrame)
+        // Keep the live size: a rolled-up note sits where rolling up from `target` would put it.
+        let height = panel.frame.height
+        let frame = height < target.height ? Self.rolledFrame(target, toHeight: height, screens: screens) : target
         placing = true
-        panel.setFrameOrigin(NSPoint(x: target.minX, y: target.maxY - panel.frame.height))
+        panel.setFrameOrigin(frame.origin)
         placing = false
-    }
-
-    /// `saved` itself when at least an 80×80 corner lies on one of `screens`; else `saved` shifted the
-    /// shortest distance that fits it on `main` (a note taller than the screen keeps its top edge on).
-    nonisolated static func placement(for saved: CGRect, screens: [CGRect], main: CGRect) -> CGRect {
-        if isVisible(saved, onAnyOf: screens) { return saved }
-        var frame = saved
-        frame.origin.x = min(max(saved.minX, main.minX), main.maxX - saved.width)
-        frame.origin.y = min(max(saved.minY, main.minY), main.maxY - saved.height)
-        return frame
     }
 
     /// A display was plugged in, unplugged, or rearranged. macOS shoves windows off a vanished display
@@ -207,14 +220,6 @@ final class NoteWindowManager: NSObject, NSWindowDelegate {
         for task in pendingFrameSaves.values { task.cancel() }
         pendingFrameSaves.removeAll()
         for panel in panels.values { place(panel) }
-    }
-
-    /// True when at least an 80×80 corner of `frame` lies on one of `screens` (enough to grab).
-    nonisolated static func isVisible(_ frame: CGRect, onAnyOf screens: [CGRect]) -> Bool {
-        screens.contains { screen in
-            let overlap = screen.intersection(frame)
-            return overlap.width >= 80 && overlap.height >= 80
-        }
     }
 
     // MARK: - Image window
@@ -294,6 +299,16 @@ final class NoteWindowManager: NSObject, NSWindowDelegate {
     // MARK: - NSWindowDelegate
 
     func windowDidMove(_ notification: Notification) { scheduleFrameSave(notification) }
+
+    /// The note's height limits, for user resizes only (the hosting view resets `minSize`, and a roll
+    /// animation doesn't come through here). A rolled-up bar resizes only sideways, so it can't be dragged
+    /// into a sliver or a blank note; an open note keeps room for its header and quick-add.
+    func windowWillResize(_ sender: NSWindow, to frameSize: NSSize) -> NSSize {
+        guard let panel = sender as? NotePanel else { return frameSize }
+        let collapsed = controllers[panel.noteID]?.note.isCollapsed == true
+        let height = collapsed ? NoteLayout.collapsedHeight : max(frameSize.height, NoteLayout.minExpandedHeight)
+        return NSSize(width: frameSize.width, height: height)
+    }
     func windowDidResize(_ notification: Notification) { scheduleFrameSave(notification) }
 
     func windowWillClose(_ notification: Notification) {
@@ -317,21 +332,77 @@ final class NoteWindowManager: NSObject, NSWindowDelegate {
         let id = panel.noteID
         let live = panel.frame
 
-        // While rolled up, the window is at its collapsed height. Still persist position/width,
-        // but keep the EXPANDED height in the DB and reconstruct the expanded top (collapse keeps
-        // the top edge fixed) — otherwise a move/resize done while collapsed is lost on relaunch.
+        // While rolled up, the window is at its collapsed height. Still persist position/width, but
+        // save the frame expanding from here would give (EXPANDED height) — otherwise a move/resize
+        // done while collapsed is lost on relaunch, where rolling up from it puts the bar back.
         let collapsed = controllers[id]?.note.isCollapsed == true
-        let height = collapsed ? (expandedHeights[id] ?? live.height) : live.height
-        let x = live.origin.x
-        let y = collapsed ? (live.maxY - height) : live.origin.y
-        let width = live.width
-        savedFrames[id] = CGRect(x: x, y: y, width: width, height: height)
+        let frame = collapsed
+            ? Self.rolledFrame(live, toHeight: expandedHeights[id] ?? live.height, screens: Self.visibleFrames)
+            : live
+        let (x, y, width, height) = (frame.minX, frame.minY, frame.width, frame.height)
+        savedFrames[id] = frame
 
         pendingFrameSaves[id]?.cancel()
         pendingFrameSaves[id] = Task { [appDatabase] in
             try? await Task.sleep(for: .milliseconds(300))
             if Task.isCancelled { return }
             try? await appDatabase.updateNoteFrame(id: id, x: x, y: y, width: width, height: height)
+        }
+    }
+}
+
+// MARK: - Bottom snap
+
+extension NoteWindowManager {
+    /// A bar let go within `bottomSnap` of its display's bottom (or past it) glides down flush, where
+    /// expanding grows upward (issue 18). "Rolling" it to its own height is exactly that move.
+    private func snapToBottom(_ panel: NotePanel) {
+        guard controllers[panel.noteID]?.note.isCollapsed == true else { return }
+        let snapped = Self.rolledFrame(panel.frame, toHeight: panel.frame.height, screens: Self.visibleFrames)
+        guard snapped != panel.frame else { return }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = Self.rollDuration
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            panel.animator().setFrame(snapped, display: true)
+        }
+    }
+}
+
+// MARK: - Frame geometry (pure, tested)
+
+extension NoteWindowManager {
+    /// How far above the bottom of the display (the Dock's top) a note still counts as parked there.
+    nonisolated static let bottomSnap: CGFloat = 48
+
+    /// `frame` rolled up to `height` or back down. The top edge stays put, unless the note's bottom is
+    /// within `bottomSnap` of its display's bottom: then it rolls from there, flush — a bar parked above
+    /// the Dock stays there and expands upward. Expanding never runs off the bottom or above the top.
+    nonisolated static func rolledFrame(_ frame: CGRect, toHeight height: CGFloat, screens: [CGRect]) -> CGRect {
+        var result = frame
+        result.origin.y = frame.maxY - height
+        result.size.height = height
+        let area = { (s: CGRect) in s.intersection(frame).width * s.intersection(frame).height }
+        guard let screen = screens.max(by: { area($0) < area($1) }), area(screen) > 0 else { return result }
+        if frame.minY <= screen.minY + bottomSnap { result.origin.y = screen.minY }
+        result.origin.y = min(max(result.origin.y, screen.minY), screen.maxY - height)
+        return result
+    }
+
+    /// `saved` itself when at least an 80×80 corner lies on one of `screens`; else `saved` shifted the
+    /// shortest distance that fits it on `main` (a note taller than the screen keeps its top edge on).
+    nonisolated static func placement(for saved: CGRect, screens: [CGRect], main: CGRect) -> CGRect {
+        if isVisible(saved, onAnyOf: screens) { return saved }
+        var frame = saved
+        frame.origin.x = min(max(saved.minX, main.minX), main.maxX - saved.width)
+        frame.origin.y = min(max(saved.minY, main.minY), main.maxY - saved.height)
+        return frame
+    }
+
+    /// True when at least an 80×80 corner of `frame` lies on one of `screens` (enough to grab).
+    nonisolated static func isVisible(_ frame: CGRect, onAnyOf screens: [CGRect]) -> Bool {
+        screens.contains { screen in
+            let overlap = screen.intersection(frame)
+            return overlap.width >= 80 && overlap.height >= 80
         }
     }
 }
