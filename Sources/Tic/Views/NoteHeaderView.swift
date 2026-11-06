@@ -241,23 +241,23 @@ extension NoteHeaderView {
             Divider()
             colorSwatches
             VStack(alignment: .leading, spacing: 10) {
-                Toggle(isOn: Binding(
+                optionSwitch("Glass", systemImage: "drop", isOn: Binding(
                     get: { note.material == .glass },
                     set: { _ in controller.toggleMaterial() }
-                )) { Label("Glass", systemImage: "drop") }
-                Toggle(isOn: Binding(
+                ))
+                optionSwitch("Hide completed", systemImage: "eye.slash", isOn: Binding(
                     get: { note.hideCompleted },
                     set: { _ in controller.toggleHideCompleted() }
-                )) { Label("Hide completed", systemImage: "eye.slash") }
-                Toggle(isOn: Binding(
+                ))
+                optionSwitch("Move completed to bottom", systemImage: "arrow.down.to.line", isOn: Binding(
                     get: { note.moveCompletedToBottom },
                     set: { _ in controller.toggleMoveCompletedToBottom() }
-                )) { Label("Move completed to bottom", systemImage: "arrow.down.to.line") }
+                ))
                 if let sync {
-                    Toggle(isOn: Binding(
+                    optionSwitch("Sync", systemImage: "arrow.triangle.2.circlepath", isOn: Binding(
                         get: { note.isSynced && sync.isEnabled },
                         set: { _ in controller.toggleSynced() }
-                    )) { Label("Sync", systemImage: "arrow.triangle.2.circlepath") }
+                    ))
                     .disabled(!sync.isEnabled)
                     .help("Keep this list the same on your other Macs")
                     if !sync.isEnabled {
@@ -269,6 +269,7 @@ extension NoteHeaderView {
                         }
                         .buttonStyle(.link)
                         .font(.caption)
+                        .padding(.leading, Self.optionIconWidth + Self.optionIconGap)
                     }
                 }
             }
@@ -295,7 +296,28 @@ extension NoteHeaderView {
         }
         .font(.callout)
         .padding(14)
-        .frame(width: 240)
+        .frame(width: 290)
+    }
+
+    private static let optionIconWidth: CGFloat = 16
+    private static let optionIconGap: CGFloat = 8
+
+    /// An option row's icon and title. The icon sits in a fixed-width column, so every title in the
+    /// popover — switches and actions alike — starts at the same edge whatever the symbol's width.
+    private func optionLabel(_ title: String, systemImage: String) -> some View {
+        HStack(spacing: Self.optionIconGap) {
+            Image(systemName: systemImage).frame(width: Self.optionIconWidth)
+            Text(title).lineLimit(1)
+        }
+    }
+
+    /// A switch row: the label on the left, the switch at the right edge, so every switch lines up.
+    private func optionSwitch(_ title: String, systemImage: String, isOn: Binding<Bool>) -> some View {
+        HStack(spacing: 12) {
+            optionLabel(title, systemImage: systemImage)
+            Spacer(minLength: 0)
+            Toggle(title, isOn: isOn).labelsHidden()
+        }
     }
 
     private var colorSwatches: some View {
@@ -326,7 +348,7 @@ extension NoteHeaderView {
             showOptions = false
             action()
         } label: {
-            Label(title, systemImage: systemImage)
+            optionLabel(title, systemImage: systemImage)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
         }
