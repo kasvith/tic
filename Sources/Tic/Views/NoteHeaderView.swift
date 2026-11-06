@@ -241,23 +241,23 @@ extension NoteHeaderView {
             Divider()
             colorSwatches
             VStack(alignment: .leading, spacing: 10) {
-                Toggle("Glass", isOn: Binding(
+                Toggle(isOn: Binding(
                     get: { note.material == .glass },
                     set: { _ in controller.toggleMaterial() }
-                ))
-                Toggle("Hide completed", isOn: Binding(
+                )) { Label("Glass", systemImage: "drop") }
+                Toggle(isOn: Binding(
                     get: { note.hideCompleted },
                     set: { _ in controller.toggleHideCompleted() }
-                ))
-                Toggle("Move completed to bottom", isOn: Binding(
+                )) { Label("Hide completed", systemImage: "eye.slash") }
+                Toggle(isOn: Binding(
                     get: { note.moveCompletedToBottom },
                     set: { _ in controller.toggleMoveCompletedToBottom() }
-                ))
+                )) { Label("Move completed to bottom", systemImage: "arrow.down.to.line") }
                 if let sync {
-                    Toggle("Sync", isOn: Binding(
+                    Toggle(isOn: Binding(
                         get: { note.isSynced && sync.isEnabled },
                         set: { _ in controller.toggleSynced() }
-                    ))
+                    )) { Label("Sync", systemImage: "arrow.triangle.2.circlepath") }
                     .disabled(!sync.isEnabled)
                     .help("Keep this list the same on your other Macs")
                     if !sync.isEnabled {
