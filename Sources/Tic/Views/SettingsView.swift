@@ -18,6 +18,19 @@ struct SettingsView: View {
     }
 }
 
+/// A small "Experimental" capsule for features still finding their feet (sync, for now).
+struct ExperimentalTag: View {
+    var body: some View {
+        Text("Experimental")
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(.orange)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 1)
+            .background(Capsule().fill(Color.orange.opacity(0.15)))
+            .help("Sync is new and still experimental")
+    }
+}
+
 enum SettingsTab: String {
     case general, sync, agents
     static let storageKey = "settingsTab"
@@ -89,9 +102,19 @@ private struct SyncSettings: View {
         Form {
             Section {
                 Toggle(isOn: Binding(get: { sync.isEnabled }, set: { sync.setEnabled($0) })) {
-                    Text("Sync lists between Macs")
+                    HStack(spacing: 6) {
+                        Text("Sync lists between Macs")
+                        ExperimentalTag()
+                    }
                     Text("Only the lists you choose. Which lists are open, and where they sit, stay on each Mac.")
                 }
+            } footer: {
+                VStack(alignment: .leading, spacing: 4) {
+                    Label("Sync is new and still experimental. If a list looks wrong, turn sync off for it and "
+                          + "tell us what happened.", systemImage: "flask")
+                    Link("Report a Problem…", destination: URL(string: "https://github.com/kasvith/tic/issues/new")!)
+                }
+                .foregroundStyle(.secondary)
             }
             Section {
                 HStack {

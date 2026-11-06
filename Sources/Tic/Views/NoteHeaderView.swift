@@ -254,7 +254,7 @@ extension NoteHeaderView {
                 ))
                 // Only once sync is on in Settings › Sync; until then there's nothing to switch.
                 if sync?.isEnabled == true {
-                    optionSwitch("Sync", systemImage: "arrow.triangle.2.circlepath", isOn: Binding(
+                    optionSwitch("Sync", systemImage: "arrow.triangle.2.circlepath", experimental: true, isOn: Binding(
                         get: { note.isSynced },
                         set: { _ in controller.toggleSynced() }
                     ))
@@ -300,9 +300,12 @@ extension NoteHeaderView {
     }
 
     /// A switch row: the label on the left, the switch at the right edge, so every switch lines up.
-    private func optionSwitch(_ title: String, systemImage: String, isOn: Binding<Bool>) -> some View {
+    private func optionSwitch(
+        _ title: String, systemImage: String, experimental: Bool = false, isOn: Binding<Bool>
+    ) -> some View {
         HStack(spacing: 12) {
             optionLabel(title, systemImage: systemImage)
+            if experimental { ExperimentalTag() }
             Spacer(minLength: 0)
             Toggle(title, isOn: isOn).labelsHidden()
         }
