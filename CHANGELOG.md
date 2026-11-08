@@ -2,6 +2,12 @@
 
 All notable changes to Tic are documented here.
 
+## [0.11.1] - 2026-11-08
+
+### Bug Fixes
+
+- *(notes)* Stop SwiftUI resizing notes mid-layout, which crashed rolled-up bars (#23)
+
 ## [0.11.0] - 2026-11-06
 
 ### Features
