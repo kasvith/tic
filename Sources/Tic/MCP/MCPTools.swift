@@ -152,7 +152,7 @@ struct MCPTools: Sendable {
         let rect = CGRect(
             x: args.double("x") ?? n.frameX,
             y: args.double("y") ?? n.frameY,
-            width: max(120, args.double("width") ?? n.frameW),
+            width: max(NoteLayout.minWidth, args.double("width") ?? n.frameW),
             height: max(80, args.double("height") ?? n.frameH)
         )
         await window.setFrame(id, rect)

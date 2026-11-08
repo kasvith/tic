@@ -8,6 +8,8 @@ enum NoteLayout {
     static let collapsedHeight: CGFloat = 34
     /// The shortest an open note can be resized to (`NoteWindowManager.windowWillResize`).
     static let minExpandedHeight: CGFloat = 160
+    /// The narrowest a note can be: an open note's header controls just fit.
+    static let minWidth: CGFloat = 156
     /// Horizontal inset added per nesting level, so subtasks step to the right of their parent.
     static let indentStep: CGFloat = 20
     /// Horizontal inset of task rows from the note's edges — room for the drag grip and the drop
@@ -98,8 +100,8 @@ struct NoteView: View {
                 QuickAddBar(controller: controller, theme: theme)
             }
         }
-        // `minHeight: 0`: the window opens from a bar, and the hosting view won't let it be shorter than the
-        // content's minimum — it jumped straight to ~150pt. The resize delegate keeps open notes taller.
+        // `minHeight: 0`: part-way through a roll the window is shorter than the list's ~150pt minimum, and the
+        // content still has to fit it. The resize delegate keeps open notes taller.
         .frame(maxWidth: .infinity, minHeight: 0, maxHeight: .infinity, alignment: .topLeading)
         .onGeometryChange(for: Bool.self) { $0.size.height <= NoteLayout.collapsedHeight + 0.5 } action: {
             atBarHeight = $0

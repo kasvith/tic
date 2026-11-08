@@ -248,9 +248,10 @@ panels**, and a few responsibilities are deliberately split across the AppKit/Sw
   (`showsBar`). The roll is an `animator()` frame animation, not the blocking
   `setFrame(_:display:animate:)` (SwiftUI only swapped the content after it); the system frame returns
   before expanding and goes only after rolling up, since a titled window's shadow tracks a resize. The
-  bar has **no** shadow: a frameless window's traces the capsule with a dark rim that reads as a border. The content has `minHeight: 0` — the hosting view won't let the window be shorter than the
-  content's minimum (an expand jumped straight to ~150pt) — so the open note's minimum lives in
-  `windowWillResize`, which also locks the bar's height.
+  bar has **no** shadow: a frameless window's traces the capsule with a dark rim that reads as a border. `NotePanel` sets `hosting.sizingOptions = []`, so only the manager sizes a note: left on, the
+  hosting view resized the window from inside a layout pass when the hover controls raised the content's minimum, and a
+  bar has so few views that AppKit's limit on layout passes (one per view) aborted the app (issue 22). So the minimums
+  live in `windowWillResize`, which also locks the bar's height, and the content has `minHeight: 0` to fit a window mid-roll.
 - **Theming via roles, not raw colors.** `NoteColor.color(_:on:)` resolves a role
   (title/task/secondary/completed/checkbox) for a `Surface` (`.solid` uses per-theme tuned inks;
   `.glass` uses adaptive `.primary`/`.secondary`). Views read a resolved `NoteTheme`, never branch

@@ -15,7 +15,8 @@ final class NotePanel: NSPanel {
     init(note: Note, content: AnyView) {
         self.noteID = note.id
 
-        let rect = NSRect(x: note.frameX, y: note.frameY, width: note.frameW, height: note.frameH)
+        let width = max(note.frameW, NoteLayout.minWidth)
+        let rect = NSRect(x: note.frameX, y: note.frameY, width: width, height: note.frameH)
         super.init(
             contentRect: rect,
             styleMask: Self.noteStyle,
@@ -39,6 +40,10 @@ final class NotePanel: NSPanel {
 
         let hosting = NSHostingView(rootView: content)
         hosting.autoresizingMask = [.width, .height]
+        // `NoteWindowManager` alone sizes the panel. Left on, the hosting view resizes the window from inside a
+        // layout pass whenever the content's minimum changes (the hover controls do), and a rolled-up bar has so
+        // few views that AppKit's limit on layout passes (one per view) aborts the app (issue 22).
+        hosting.sizingOptions = []
         contentView = hosting
 
         apply(floatOnTop: note.floatOnTop, showOnAllSpaces: note.showOnAllSpaces)

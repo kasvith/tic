@@ -304,14 +304,14 @@ final class NoteWindowManager: NSObject, NSWindowDelegate {
 
     func windowDidMove(_ notification: Notification) { scheduleFrameSave(notification) }
 
-    /// The note's height limits, for user resizes only (the hosting view resets `minSize`, and a roll
-    /// animation doesn't come through here). A rolled-up bar resizes only sideways, so it can't be dragged
-    /// into a sliver or a blank note; an open note keeps room for its header and quick-add.
+    /// The note's size limits, for user resizes only (a roll animation doesn't come through here). A
+    /// rolled-up bar resizes only sideways, so it can't be dragged into a sliver or a blank note; an open
+    /// note keeps room for its header and quick-add.
     func windowWillResize(_ sender: NSWindow, to frameSize: NSSize) -> NSSize {
         guard let panel = sender as? NotePanel else { return frameSize }
         let collapsed = controllers[panel.noteID]?.note.isCollapsed == true
         let height = collapsed ? NoteLayout.collapsedHeight : max(frameSize.height, NoteLayout.minExpandedHeight)
-        return NSSize(width: frameSize.width, height: height)
+        return NSSize(width: max(frameSize.width, NoteLayout.minWidth), height: height)
     }
     func windowDidResize(_ notification: Notification) { scheduleFrameSave(notification) }
 
