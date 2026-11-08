@@ -99,6 +99,31 @@ struct NoteWindowManagerTests {
         #expect(panel.frame.minY == screen.minY + 30)
     }
 
+    @Test("the hover controls never resize a bar: only the manager sizes a note (issue 22)")
+    @MainActor func hoverLeavesBarSize() async throws {
+        _ = NSApplication.shared
+        let db = try AppDatabase.makeInMemory()
+        let note = Note(isCollapsed: true)
+        try await db.insert(note)
+        let manager = NoteWindowManager(appDatabase: db)
+        let panel = manager.openNote(note, makeKey: false)
+        defer { panel.close() }
+        // Narrower than the controls, the worst case: they used to raise the content's minimum width, and the
+        // hosting view resized the window from inside a layout pass, which AppKit aborts the app for.
+        panel.setFrame(NSRect(origin: panel.frame.origin, size: NSSize(width: 60, height: bar)), display: true)
+        try await Task.sleep(for: .milliseconds(100))
+
+        func trackers(in view: NSView) -> [HoverArea.TrackingView] {
+            ((view as? HoverArea.TrackingView).map { [$0] } ?? []) + view.subviews.flatMap(trackers)
+        }
+        let content = try #require(panel.contentView)
+        let tracker = try #require(trackers(in: content).first)
+        tracker.mouseEntered(with: NSEvent())   // the override only reports it; synthetic events can't drive it
+        try await Task.sleep(for: .milliseconds(350))   // the controls' fade-in
+        #expect(panel.frame.size == NSSize(width: 60, height: bar))
+        #expect(manager.windowWillResize(panel, to: NSSize(width: 40, height: bar)).width == NoteLayout.minWidth)
+    }
+
     @Test("a rolled-up bar is frameless and keeps its height; expanding brings the system frame back")
     @MainActor func barHeightLock() async throws {
         _ = NSApplication.shared
@@ -108,8 +133,7 @@ struct NoteWindowManagerTests {
         let manager = NoteWindowManager(appDatabase: db)
         let panel = manager.openNote(note, makeKey: false)
         defer { panel.close() }
-        // Frameless: no system corners to split from the fill, and no title-bar safe area — the hosting view
-        // grows the window to the bar's minimum height plus that inset, which bounced a titled bar to ~47pt.
+        // Frameless: no system corners to split from the fill, and no title-bar safe area.
         #expect(!panel.styleMask.contains(.titled) && panel.contentView?.safeAreaInsets.top == 0)
         #expect(!panel.hasShadow)   // a frameless window's shadow rims the capsule like a dark border
         #expect(manager.windowWillResize(panel, to: NSSize(width: 320, height: 200)) == NSSize(width: 320, height: bar))
