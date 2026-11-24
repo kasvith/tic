@@ -627,13 +627,14 @@ extension NoteWindowManager {
         hoverTasks.removeValue(forKey: id)?.cancel()
         panel.level = .floating
         guard peeks.insert(id).inserted else { return panel.makeKeyAndOrderFront(nil) }
+        controllers[id]?.isPickingEmoji = false   // its header was rebuilt; nothing is waiting for the viewer
         let frame = DockLayout.peekFrame(edge, tab: tab, size: noteSize(id), in: display.visible)
         panel.setFrameless(false)
         Self.setFrameNow(panel, Self.slid(frame, toward: edge), alpha: 0)
         panel.contentView?.layoutSubtreeIfNeeded()   // the list lays out now, unseen, rather than during the slide
         panel.makeKeyAndOrderFront(nil)
         slide(panel, to: frame, alpha: 1, duration: 0.26)
-        watchPointer(id)
+        watchPointer(id, opening: frame)
     }
 
     /// Back into the tab: slides into its edge as it fades out (a little quicker than it opened), becomes the tab, and
@@ -644,7 +645,7 @@ extension NoteWindowManager {
         peekTasks.removeValue(forKey: id)?.cancel()
         guard peeks.remove(id) != nil, let panel = panels[id], let edge = dockEdges[id] else { return }
         let hadKeyboard = panel.isKeyWindow
-        if hadKeyboard { panel.makeFirstResponder(nil) }   // end any edit; the field goes with the note
+        panel.makeFirstResponder(nil)   // end any edit, key or not: the field goes with the note
         let into = Self.slid(panel.frame, toward: edge)
         slide(panel, to: into, alpha: 0, duration: 0.16, closing: true) { [weak self, weak panel] in
             guard let self, let panel, !self.peeks.contains(id), self.dockEdges[id] != nil else { return }
@@ -669,26 +670,37 @@ extension NoteWindowManager {
 
     /// An open docked note goes back by itself once the pointer has been off it for a second, for a quick edit: open,
     /// type, Return, move on. Only after the pointer has been on it (opened from the menu bar, it waits for you to come
-    /// over), and never with something typed in it that isn't in yet (Return or Esc lets it go) or while it's in use.
-    private func watchPointer(_ id: UUID) {
+    /// over), and never with something typed in it that isn't in yet (Return or Esc lets it go), while All emoji… waits
+    /// for the Character Viewer, or while it's in use. A click elsewhere still puts it back (`scheduleRetract`).
+    private func watchPointer(_ id: UUID, opening frame: CGRect) {
         peekTasks[id]?.cancel()
+        // Clicked open, the pointer is on it already: counted now, not at the first check, which can come late.
+        let onItAlready = frame.insetBy(dx: -2, dy: -2).contains(pointerLocation())
         peekTasks[id] = Task { [weak self] in
-            var visited = false
-            var away = 0
+            var visited = onItAlready
+            // Timed by the clock, not by counting checks: on a busy main thread checks come late, and a second
+            // stretched to many (seen under the test suite's load).
+            var awaySince: ContinuousClock.Instant?
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(100))
                 guard let self, self.peeks.contains(id), let panel = self.panels[id] else { return }
                 if panel.frame.insetBy(dx: -2, dy: -2).contains(self.pointerLocation()) {
                     visited = true
-                    away = 0
+                    awaySince = nil
                     continue
                 }
                 guard visited else { continue }
                 let typing = (panel.firstResponder as? NSTextView).map {
                     !$0.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 } ?? false
-                away = typing || self.isInUse(id, panel) ? 0 : away + 1
-                if away >= 10 { return self.retract(id) }
+                let picking = self.controllers[id]?.isPickingEmoji == true   // the pointer went to the viewer
+                if typing || picking || self.isInUse(id, panel) {
+                    awaySince = nil
+                    continue
+                }
+                let since = awaySince ?? .now
+                awaySince = since
+                if ContinuousClock.now - since >= .seconds(1) { return self.retract(id) }
             }
         }
     }

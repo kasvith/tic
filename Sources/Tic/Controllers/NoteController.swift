@@ -67,6 +67,9 @@ final class NoteController {
     @ObservationIgnored var onToggleDock: (() -> Void)?
     /// The open note's →|: back into its tab.
     @ObservationIgnored var onPutBack: (() -> Void)?
+    /// ⋯ › Icon › All emoji… is waiting for the Character Viewer (set by the header): an open docked note stays out
+    /// meanwhile, though the pointer has gone over to the viewer.
+    @ObservationIgnored var isPickingEmoji = false
 
     init(note: Note, database: AppDatabase) {
         self.noteID = note.id

@@ -80,6 +80,7 @@ struct NoteHeaderView: View {
             }
             .frame(width: 1, height: 1)
         }
+        .onChange(of: catchingEmoji) { _, catching in controller.isPickingEmoji = catching }
         .help(isRolledUp ? "Drag to move · double-click to expand" : "")
         .task(id: controller.renameRequest) {   // also runs on appear, for a list that opens renaming
             if controller.renameRequest > 0, !isRolledUp { isRenaming = true }

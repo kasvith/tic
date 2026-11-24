@@ -164,8 +164,10 @@ panels**, and a few responsibilities are deliberately split across the AppKit/Sw
   A **click** on the tab opens the note (no hover: users found it jumpy) with its quick-add taking the keyboard
   (`autoFocus` while docked: the list is built afresh each time it opens). It goes back on a click elsewhere (resign
   key), Esc (`NotePanel.cancelOperation`; an empty editor passes Esc on), the header's →|, or by itself a second after
-  the pointer has left it (`watchPointer`: only once the pointer has been on it, never with typed text not yet in, nor
-  while `isInUse`: a drag or resize, its popover or a sheet, its picture, a menu via `menusOpen`). Going back while key
+  the pointer has left it (`watchPointer`: only once the pointer has been on it, counted at the click that opened it;
+  never with typed text not yet in, while All emoji… waits for the viewer (`isPickingEmoji`), nor while `isInUse`: a
+  drag or resize, its popover or a sheet, its picture, a menu via `menusOpen`; the second is timed by the clock, since
+  on a busy main thread the 100 ms checks come late). Going back while key
   hands the keyboard back to the app you were in (a brief `orderOut`), or the tab kept taking your typing. Open, its
   header shows →| and a lit dock button (Undock) instead of roll-up and the pin; Undock (that button, ⋯, the tab's
   right-click menu) slides it 40pt in from the edge. Opening slides the window 18pt out of its edge as it fades in, and

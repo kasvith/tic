@@ -379,7 +379,7 @@ struct EdgeDockTests {
         _ = NSApplication.shared
         guard let target = outerEdge() else { return }
         let (manager, panel, note, _) = try await openDocked(target)
-        defer { panel.close() }
+        defer { withExtendedLifetime(manager) { panel.close() } }   // its pointer watch holds it weakly
         var pointer = NSPoint(x: panel.frame.midX, y: panel.frame.midY)   // on the tab: a click opens it
         manager.pointerLocation = { pointer }
         manager.openNote(note)
@@ -395,12 +395,31 @@ struct EdgeDockTests {
         try await waitFor { panel.frame.width == DockLayout.sliverWidth }
     }
 
+    @Test("an open docked note stays out while All emoji… waits for the Character Viewer, where the pointer has gone")
+    func staysOutWhilePickingEmoji() async throws {
+        _ = NSApplication.shared
+        guard let target = outerEdge() else { return }
+        let (manager, panel, note, _) = try await openDocked(target)
+        defer { withExtendedLifetime(manager) { panel.close() } }   // its pointer watch holds it weakly
+        var pointer = NSPoint(x: panel.frame.midX, y: panel.frame.midY)
+        manager.pointerLocation = { pointer }
+        manager.openNote(note)
+        try await waitFor { panel.frame.width == 280 }
+        let controller = try #require(manager.controllers[note.id])   // the pointer leaves at once, as it may
+        controller.isPickingEmoji = true
+        pointer = NSPoint(x: target.display.visible.midX, y: target.display.visible.midY)   // over at the viewer
+        try await Task.sleep(for: .milliseconds(1500))
+        #expect(panel.frame.width == 280)
+        controller.isPickingEmoji = false   // the emoji arrived (or the viewer was given up)
+        try await waitFor { panel.frame.width == DockLayout.sliverWidth }
+    }
+
     @Test("opened from the menu bar, a docked note waits for the pointer to come over before it can go back by itself")
     func openedFromMenuWaitsForPointer() async throws {
         _ = NSApplication.shared
         guard let target = outerEdge() else { return }
         let (manager, panel, note, _) = try await openDocked(target)
-        defer { panel.close() }
+        defer { withExtendedLifetime(manager) { panel.close() } }   // its pointer watch holds it weakly
         var pointer = NSPoint(x: target.display.visible.midX, y: target.display.visible.maxY - 2)   // up at the menu bar
         manager.pointerLocation = { pointer }
         manager.openNote(note)
@@ -418,7 +437,7 @@ struct EdgeDockTests {
         _ = NSApplication.shared
         guard let target = outerEdge() else { return }
         let (manager, panel, note, _) = try await openDocked(target)
-        defer { panel.close() }
+        defer { withExtendedLifetime(manager) { panel.close() } }   // its pointer watch holds it weakly
         let onTab = NSPoint(x: panel.frame.midX, y: panel.frame.midY)
         manager.pointerLocation = { onTab }   // stays on the note: only Esc can put it back
         manager.openNote(note)
@@ -436,7 +455,7 @@ struct EdgeDockTests {
         _ = NSApplication.shared
         guard let target = outerEdge() else { return }
         let (manager, panel, note, db) = try await openDocked(target)
-        defer { panel.close() }
+        defer { withExtendedLifetime(manager) { panel.close() } }   // its pointer watch holds it weakly
         let onTab = NSPoint(x: panel.frame.midX, y: panel.frame.midY)
         manager.pointerLocation = { onTab }
         manager.openNote(note)
@@ -454,7 +473,7 @@ struct EdgeDockTests {
         _ = NSApplication.shared
         guard let target = outerEdge() else { return }
         let (manager, panel, note, db) = try await openDocked(target)
-        defer { panel.close() }
+        defer { withExtendedLifetime(manager) { panel.close() } }   // its pointer watch holds it weakly
         manager.controllers[note.id]?.onToggleDock?()
         try await waitFor { panel.frame.width == 280 && panel.alphaValue == 1 }
         let visible = target.display.visible
@@ -462,12 +481,13 @@ struct EdgeDockTests {
         try await waitFor { try await db.note(id: note.id)?.dockEdge == nil }
     }
 
-    private func waitFor(_ condition: @escaping () async throws -> Bool, timeout: Duration = .seconds(10)) async throws {
+    private func waitFor(_ condition: @escaping () async throws -> Bool, timeout: Duration = .seconds(10),
+                         sourceLocation: SourceLocation = #_sourceLocation) async throws {
         let deadline = ContinuousClock.now.advanced(by: timeout)
         while ContinuousClock.now < deadline {
             if try await condition() { return }
             try await Task.sleep(for: .milliseconds(20))
         }
-        Issue.record("timed out")
+        Issue.record("timed out", sourceLocation: sourceLocation)   // at the wait that failed, not here
     }
 }
