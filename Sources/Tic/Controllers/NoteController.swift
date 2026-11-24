@@ -430,6 +430,23 @@ extension NoteController {
         }
     }
 
+    /// ⋯ › Over full-screen apps: a pinned note also stays on every desktop and above full-screen apps. Kept
+    /// through an unpin (the switch hides, the value waits for the next pin).
+    func toggleShowOnAllSpaces() {
+        note.showOnAllSpaces.toggle()
+        let id = noteID
+        let floatOnTop = note.floatOnTop
+        let showOnAllSpaces = note.showOnAllSpaces
+        let isCollapsed = note.isCollapsed
+        onApplyBehavior?(floatOnTop, showOnAllSpaces)
+        Task { [db] in
+            try? await db.updateNoteFlags(
+                id: id, floatOnTop: floatOnTop,
+                showOnAllSpaces: showOnAllSpaces, isCollapsed: isCollapsed
+            )
+        }
+    }
+
     /// Rolls the note up to just its title bar (or back down), like Stickies.
     func toggleCollapsed() {
         note.isCollapsed.toggle()

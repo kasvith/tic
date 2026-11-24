@@ -186,7 +186,8 @@ struct NoteHeaderView: View {
         return iconButton(
             systemName: isFloating ? "pin.fill" : "pin",
             isActive: isFloating,
-            help: isFloating ? "Unpin from top" : "Keep on top"
+            help: !isFloating ? "Keep on top"
+                : note.showOnAllSpaces ? "Kept on top everywhere. Click to unpin" : "Unpin from top"
         ) {
             controller.toggleFloatOnTop()
         }
@@ -252,6 +253,14 @@ extension NoteHeaderView {
                     get: { note.moveCompletedToBottom },
                     set: { _ in controller.toggleMoveCompletedToBottom() }
                 ))
+                // Only for a pinned list: all Spaces applies only while pinned (`NotePanel.apply`).
+                if note.floatOnTop {
+                    optionSwitch("Over full-screen apps", systemImage: "arrow.up.left.and.arrow.down.right", isOn: Binding(
+                        get: { note.showOnAllSpaces },
+                        set: { _ in controller.toggleShowOnAllSpaces() }
+                    ))
+                    .help("Also stays on every desktop")
+                }
                 // Only once sync is on in Settings › Sync; until then there's nothing to switch.
                 if sync?.isEnabled == true {
                     optionSwitch("Sync", systemImage: "arrow.triangle.2.circlepath", experimental: true, isOn: Binding(

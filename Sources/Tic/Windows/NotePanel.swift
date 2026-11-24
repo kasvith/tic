@@ -66,11 +66,14 @@ final class NotePanel: NSPanel {
         }
     }
 
-    /// Applies the float-on-top and show-on-all-Spaces behaviours to the live window.
+    /// Applies the float-on-top and show-on-all-Spaces behaviours to the live window. All Spaces only counts
+    /// while pinned (⋯ › Over full-screen apps shows only then): joining every Space, full-screen apps' included,
+    /// with `.fullScreenAuxiliary` is what keeps a pinned note above an app in full screen. A Dock-icon app
+    /// can do this because the panel is non-activating (checked on macOS 26, Nov 2026).
     func apply(floatOnTop: Bool, showOnAllSpaces: Bool) {
         level = floatOnTop ? .floating : .normal
         var behavior: NSWindow.CollectionBehavior = [.fullScreenAuxiliary]
-        if showOnAllSpaces { behavior.insert(.canJoinAllSpaces) }
+        if floatOnTop && showOnAllSpaces { behavior.insert(.canJoinAllSpaces) }
         collectionBehavior = behavior
     }
 

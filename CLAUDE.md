@@ -75,7 +75,11 @@ panels**, and a few responsibilities are deliberately split across the AppKit/Sw
   each panel's `NSWindowDelegate`, and is the single chokepoint for all window mutation:
   `restoreAll` (launch: only notes with `isOpen` — the header X clears it, quitting doesn't, so
   relaunch shows what was on screen), `openNote`, close, debounced frame persistence, roll-up
-  resize, and applying float-on-top / show-on-all-Spaces. Frames are global coordinates spanning
+  resize, and applying float-on-top / show-on-all-Spaces (all Spaces counts only while pinned: ⋯ ›
+  Over full-screen apps). No collection behaviour moves a window off a Space once it's there, so a note
+  let go of all Spaces over a full-screen app is hidden until its display shows a desktop again
+  (`applyBehavior` / `activeSpaceDidChange`). `SkyLight.isFullScreen` tells which, using the private
+  space-type call window managers use, looked up at run time; if a macOS drops it, notes simply stay put. Frames are global coordinates spanning
   all displays, exactly as Stickies stores them. **Only user drags/resizes persist a frame**: `place`
   puts a note at its saved frame when any connected display shows it, else parks it at the nearest
   edge of the main display, and re-runs on `didChangeScreenParametersNotification` with saves

@@ -149,3 +149,67 @@ struct NoteWindowManagerTests {
         #expect(short.height == NoteLayout.minExpandedHeight)
     }
 }
+
+@MainActor
+@Suite("NotePanel window behaviour")
+struct NotePanelBehaviorTests {
+    @Test("all Spaces applies only while pinned, and then it reaches full-screen apps' Spaces too")
+    func allSpacesOnlyWhilePinned() {
+        _ = NSApplication.shared
+        let panel = NotePanel(note: Note(), content: AnyView(Color.clear))
+        for (pinned, everywhere, joins) in [(false, false, false), (false, true, false), (true, false, false), (true, true, true)] {
+            panel.apply(floatOnTop: pinned, showOnAllSpaces: everywhere)
+            #expect(panel.level == (pinned ? .floating : .normal))
+            #expect(panel.collectionBehavior.contains(.canJoinAllSpaces) == joins)
+            #expect(panel.collectionBehavior.contains(.fullScreenAuxiliary))
+        }
+    }
+}
+
+@MainActor
+@Suite("Unpinning over a full-screen app")
+struct UnpinOverFullScreenTests {
+    @Test("a note let go of all Spaces over a full-screen app hides, and comes back once a desktop shows")
+    func hidesThenReturns() async throws {
+        _ = NSApplication.shared
+        let db = try AppDatabase.makeInMemory()
+        let note = Note(floatOnTop: true, showOnAllSpaces: true)
+        try await db.insert(note)
+        let manager = NoteWindowManager(appDatabase: db)
+        let panel = manager.openNote(note, makeKey: false)
+        defer { panel.close() }
+        var fullScreen = true
+        manager.isFullScreenSpace = { _ in fullScreen }
+
+        manager.applyBehavior(panel, floatOnTop: false, showOnAllSpaces: true)   // unpin over full screen
+        #expect(!panel.isVisible)
+        manager.activeSpaceDidChange()                                            // another full-screen app
+        #expect(!panel.isVisible)
+        fullScreen = false
+        manager.activeSpaceDidChange()                                            // a desktop
+        #expect(panel.isVisible)
+    }
+
+    @Test("on a desktop, unpinning leaves the note where it is; pinning again shows a hidden note")
+    func desktopAndRepin() async throws {
+        _ = NSApplication.shared
+        let db = try AppDatabase.makeInMemory()
+        let note = Note(floatOnTop: true, showOnAllSpaces: true)
+        try await db.insert(note)
+        let manager = NoteWindowManager(appDatabase: db)
+        let panel = manager.openNote(note, makeKey: false)
+        defer { panel.close() }
+        var fullScreen = false
+        manager.isFullScreenSpace = { _ in fullScreen }
+
+        manager.applyBehavior(panel, floatOnTop: false, showOnAllSpaces: true)   // unpin on a desktop
+        #expect(panel.isVisible)
+
+        manager.applyBehavior(panel, floatOnTop: true, showOnAllSpaces: true)
+        fullScreen = true
+        manager.applyBehavior(panel, floatOnTop: true, showOnAllSpaces: false)   // switch off over full screen
+        #expect(!panel.isVisible)
+        manager.applyBehavior(panel, floatOnTop: true, showOnAllSpaces: true)    // an agent turns it back on
+        #expect(panel.isVisible)
+    }
+}

@@ -25,6 +25,11 @@ final class NoteWindowManager: NSObject, NSWindowDelegate {
     /// The note whose image the image window is showing, so closing that note closes it too.
     private var imageWindowNoteID: UUID?
 
+    /// Notes let go of all Spaces while their display showed a full-screen app: hidden until it shows a desktop.
+    private var parked: Set<UUID> = []
+    /// Whether a display is showing an app's full-screen Space. Swapped in tests.
+    var isFullScreenSpace: @MainActor (NSScreen?) -> Bool = { screen in screen.map(SkyLight.isFullScreen) ?? false }
+
     /// Sync between Macs, handed to each note's views (its header shows sync activity and Sync Now). Nil
     /// in tests, where notes simply never show sync.
     var sync: FolderSync?
@@ -36,6 +41,40 @@ final class NoteWindowManager: NSObject, NSWindowDelegate {
             self, selector: #selector(screensDidChange),
             name: NSApplication.didChangeScreenParametersNotification, object: nil
         )
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self, selector: #selector(activeSpaceDidChange),
+            name: NSWorkspace.activeSpaceDidChangeNotification, object: nil
+        )
+    }
+
+    /// Applies pin + all Spaces to a live note. macOS keeps a window on whichever Space is active when it stops
+    /// joining all Spaces, and no collection behaviour or re-ordering moves it off later (probed, Nov 2026). So a
+    /// note let go over a full-screen app is hidden until its display shows a desktop again, and lands there.
+    func applyBehavior(_ panel: NotePanel, floatOnTop: Bool, showOnAllSpaces: Bool) {
+        let wasEverywhere = panel.collectionBehavior.contains(.canJoinAllSpaces)
+        panel.apply(floatOnTop: floatOnTop, showOnAllSpaces: showOnAllSpaces)
+        let isEverywhere = panel.collectionBehavior.contains(.canJoinAllSpaces)
+        if isEverywhere, parked.remove(panel.noteID) != nil {
+            panel.orderFrontRegardless()   // pinned everywhere again (by an agent) while hidden
+        } else if wasEverywhere, !isEverywhere, isFullScreenSpace(Self.screen(of: panel)) {
+            panel.orderOut(nil)
+            parked.insert(panel.noteID)
+        }
+    }
+
+    /// The user moved to another Space: show each parked note whose display is on a desktop now.
+    @objc func activeSpaceDidChange() {
+        for id in parked {
+            guard let panel = panels[id] else { parked.remove(id); continue }
+            if isFullScreenSpace(Self.screen(of: panel)) { continue }
+            parked.remove(id)
+            panel.orderFrontRegardless()
+        }
+    }
+
+    /// The display a note is on. A hidden window has no `screen`, so fall back to the one its frame is on.
+    private static func screen(of panel: NSWindow) -> NSScreen? {
+        panel.screen ?? NSScreen.screens.first { $0.frame.intersects(panel.frame) } ?? NSScreen.main
     }
 
     // MARK: - Opening notes
@@ -73,8 +112,9 @@ final class NoteWindowManager: NSObject, NSWindowDelegate {
 
         // Live-window side effects. Weak captures so the closures never keep the panel alive
         // past close (windowWillClose nils the controller, releasing them).
-        controller.onApplyBehavior = { [weak panel] floatOnTop, showOnAllSpaces in
-            panel?.apply(floatOnTop: floatOnTop, showOnAllSpaces: showOnAllSpaces)
+        controller.onApplyBehavior = { [weak self, weak panel] floatOnTop, showOnAllSpaces in
+            guard let self, let panel else { return }
+            self.applyBehavior(panel, floatOnTop: floatOnTop, showOnAllSpaces: showOnAllSpaces)
         }
         controller.onClose = { [weak panel, appDatabase] in
             // Only the user's X marks a note closed (quit doesn't), so launch restores what was visible.
@@ -322,6 +362,7 @@ final class NoteWindowManager: NSObject, NSWindowDelegate {
         pendingFrameSaves[panel.noteID] = nil
         expandedHeights[panel.noteID] = nil
         savedFrames[panel.noteID] = nil
+        parked.remove(panel.noteID)
         controllers[panel.noteID]?.stop()
         controllers[panel.noteID] = nil
         panels[panel.noteID] = nil
@@ -408,5 +449,36 @@ extension NoteWindowManager {
             let overlap = screen.intersection(frame)
             return overlap.width >= 80 && overlap.height >= 80
         }
+    }
+}
+
+// MARK: - Full-screen Spaces (private API)
+
+/// Whether a display is showing an app's full-screen Space. AppKit has no API for it, so this asks the private
+/// CoreGraphics calls window managers use (space type 4 is full screen), looked up at run time.
+/// ponytail: private API. If a macOS drops a symbol this answers false, and a note unpinned over a full-screen
+/// app stays there until full screen ends, as it did before.
+@MainActor
+enum SkyLight {
+    private typealias MainConnection = @convention(c) () -> Int32
+    private typealias CurrentSpace = @convention(c) (Int32, CFString) -> UInt64
+    private typealias SpaceType = @convention(c) (Int32, UInt64) -> Int32
+    private static let fullScreenType: Int32 = 4
+    private static let handle = dlopen(nil, RTLD_NOW)
+    private static let mainConnection = symbol("CGSMainConnectionID", as: MainConnection.self)
+    private static let currentSpace = symbol("CGSManagedDisplayGetCurrentSpace", as: CurrentSpace.self)
+    private static let spaceType = symbol("CGSSpaceGetType", as: SpaceType.self)
+
+    private static func symbol<T>(_ name: String, as type: T.Type) -> T? {
+        dlsym(handle, name).map { unsafeBitCast($0, to: type) }
+    }
+
+    static func isFullScreen(_ screen: NSScreen) -> Bool {
+        guard let mainConnection, let currentSpace, let spaceType,
+              let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber,
+              let uuid = CGDisplayCreateUUIDFromDisplayID(number.uint32Value)?.takeRetainedValue(),
+              let display = CFUUIDCreateString(nil, uuid) else { return false }
+        let connection = mainConnection()
+        return spaceType(connection, currentSpace(connection, display)) == fullScreenType
     }
 }
