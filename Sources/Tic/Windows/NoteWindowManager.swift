@@ -627,7 +627,6 @@ extension NoteWindowManager {
         hoverTasks.removeValue(forKey: id)?.cancel()
         panel.level = .floating
         guard peeks.insert(id).inserted else { return panel.makeKeyAndOrderFront(nil) }
-        controllers[id]?.isPickingEmoji = false   // its header was rebuilt; nothing is waiting for the viewer
         let frame = DockLayout.peekFrame(edge, tab: tab, size: noteSize(id), in: display.visible)
         panel.setFrameless(false)
         Self.setFrameNow(panel, Self.slid(frame, toward: edge), alpha: 0)
@@ -657,21 +656,23 @@ extension NoteWindowManager {
         }
     }
 
-    /// Lost the keyboard: back into the tab, unless it's taken back at once or something of it is still in use.
+    /// Lost the keyboard: back into the tab, unless it's taken back. It waits while something of it is in use: its
+    /// ⋯ menu above all, where All emoji… opens the Character Viewer, which takes the keyboard for its search field.
     private func scheduleRetract(_ id: UUID) {
         retractTasks[id]?.cancel()
         retractTasks[id] = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(250))
-            guard !Task.isCancelled, let self, let panel = self.panels[id] else { return }
-            if panel.isKeyWindow || self.isInUse(id, panel) { return }
-            self.retract(id)
+            while !Task.isCancelled {
+                guard let self, let panel = self.panels[id], !panel.isKeyWindow else { return }
+                if !self.isInUse(id, panel) { return self.retract(id) }
+                try? await Task.sleep(for: .milliseconds(200))
+            }
         }
     }
 
     /// An open docked note goes back by itself once the pointer has been off it for a second, for a quick edit: open,
     /// type, Return, move on. Only after the pointer has been on it (opened from the menu bar, it waits for you to come
-    /// over), and never with something typed in it that isn't in yet (Return or Esc lets it go), while All emoji… waits
-    /// for the Character Viewer, or while it's in use. A click elsewhere still puts it back (`scheduleRetract`).
+    /// over), and never with something typed in it that isn't in yet (Return or Esc lets it go) or while it's in use.
     private func watchPointer(_ id: UUID, opening frame: CGRect) {
         peekTasks[id]?.cancel()
         // Clicked open, the pointer is on it already: counted now, not at the first check, which can come late.
@@ -693,8 +694,7 @@ extension NoteWindowManager {
                 let typing = (panel.firstResponder as? NSTextView).map {
                     !$0.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 } ?? false
-                let picking = self.controllers[id]?.isPickingEmoji == true   // the pointer went to the viewer
-                if typing || picking || self.isInUse(id, panel) {
+                if typing || self.isInUse(id, panel) {
                     awaySince = nil
                     continue
                 }

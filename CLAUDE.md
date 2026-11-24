@@ -165,9 +165,9 @@ panels**, and a few responsibilities are deliberately split across the AppKit/Sw
   (`autoFocus` while docked: the list is built afresh each time it opens). It goes back on a click elsewhere (resign
   key), Esc (`NotePanel.cancelOperation`; an empty editor passes Esc on), the header's →|, or by itself a second after
   the pointer has left it (`watchPointer`: only once the pointer has been on it, counted at the click that opened it;
-  never with typed text not yet in, while All emoji… waits for the viewer (`isPickingEmoji`), nor while `isInUse`: a
-  drag or resize, its popover or a sheet, its picture, a menu via `menusOpen`; the second is timed by the clock, since
-  on a busy main thread the 100 ms checks come late). Going back while key
+  never with typed text not yet in, nor while `isInUse`: a drag or resize, its popover or a sheet, its picture, a menu
+  via `menusOpen`; the second is timed by the clock, since on a busy main thread the 100 ms checks come late). A click
+  elsewhere (`scheduleRetract`) also waits while it's in use: ⋯ › Icon › All emoji…'s viewer takes the keyboard. Going back while key
   hands the keyboard back to the app you were in (a brief `orderOut`), or the tab kept taking your typing. Open, its
   header shows →| and a lit dock button (Undock) instead of roll-up and the pin; Undock (that button, ⋯, the tab's
   right-click menu) slides it 40pt in from the edge. Opening slides the window 18pt out of its edge as it fades in, and
@@ -192,9 +192,10 @@ panels**, and a few responsibilities are deliberately split across the AppKit/Sw
 - **List icons (`NoteIcon`, pure)** — `note.icon` holds one emoji or `symbol:<name>` from a fixed set of
   SF Symbols every macOS 14 has (so any Mac draws what another picked; anything else reads as no icon).
   Emoji draw in colour, symbols in the note's title ink (`NoteIconView`). ⋯ › Icon is one row opening
-  `IconPicker` (Emoji / Symbols tabs, All emoji…, Remove). All emoji… types into `EmojiCatcher`, an invisible field in the **note**: the viewer types into the window that has
-  the keyboard, so ⋯ steps aside while it's up and reopens once an emoji arrives. Emoji you pick lead the Emoji grid in
-  every list's picker (`NoteIcon.recentEmoji`, kept in the `recentEmoji` default as one string of emoji).
+  `IconPicker` (Emoji / Symbols tabs, All emoji…, Remove). All emoji… types into `EmojiCatcher`, an invisible field in the picker itself: macOS opens the
+  Character Viewer at the text cursor of what has the keyboard, so it comes up beside the menu; Tic leaves the menus open
+  (it can't be put inside them). Emoji you pick lead the Emoji grid in every list's picker (`NoteIcon.recentEmoji`, kept
+  in the `recentEmoji` default as one string of emoji).
 - **Private lists** — `note.isPrivate` (⋯ › Private), or every list via Settings › General
   (`everyListPrivate`). A private list's panel and image window get `sharingType = .none`, which only
   capture paths that honour it respect (ScreenCaptureKit on macOS 15.4+ is reported not to), so menu bar ›

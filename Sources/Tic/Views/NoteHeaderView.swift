@@ -19,8 +19,6 @@ struct NoteHeaderView: View {
 
     @State private var showOptions = false
     @State private var showIconPicker = false
-    /// All emoji… is waiting for the Character Viewer to type an emoji into the note's `EmojiCatcher`.
-    @State private var catchingEmoji = false
     @State private var showClearConfirm = false
     /// Emoji picked lately, shared by every list's picker (`NoteIcon.recentEmoji`).
     @AppStorage("recentEmoji") private var recentEmoji = ""
@@ -73,14 +71,6 @@ struct NoteHeaderView: View {
         // The header is the window's drag handle; double-clicking its chrome rolls the note up or down.
         // Docked, the note always peeks at full size, so there's no rolling up.
         .background(WindowMoveArea { if !controller.isDocked { controller.toggleCollapsed() } })
-        .background(alignment: .leading) {
-            EmojiCatcher(isActive: $catchingEmoji) { emoji in
-                pickIcon(.emoji(emoji))
-                showOptions = true   // back to the menu it was opened from, showing the new icon
-            }
-            .frame(width: 1, height: 1)
-        }
-        .onChange(of: catchingEmoji) { _, catching in controller.isPickingEmoji = catching }
         .help(isRolledUp ? "Drag to move · double-click to expand" : "")
         .task(id: controller.renameRequest) {   // also runs on appear, for a list that opens renaming
             if controller.renameRequest > 0, !isRolledUp { isRenaming = true }
@@ -416,10 +406,6 @@ extension NoteHeaderView {
             IconPicker(current: NoteIcon(stored: note.icon), recent: recentEmoji) { icon in
                 pickIcon(icon)
                 showIconPicker = false
-            } onAllEmoji: {
-                showIconPicker = false
-                showOptions = false
-                catchingEmoji = true
             }
         }
     }

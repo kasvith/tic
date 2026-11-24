@@ -15,24 +15,23 @@ struct NoteIconView: View {
 }
 
 /// What ⋯ › Icon opens: Emoji / Symbols tabs over a grid of picks (emoji you've picked lately first), then
-/// **All emoji…** (the macOS Character Viewer, typed into the note's `EmojiCatcher`) and, while the list has an
+/// **All emoji…** (the macOS Character Viewer, typing into this picker's `EmojiCatcher`) and, while the list has an
 /// icon, **Remove**.
 struct IconPicker: View {
     let current: NoteIcon?
     /// Emoji picked lately, in any list (`NoteIcon.recentEmoji`).
     let recent: String
     let onPick: (NoteIcon?) -> Void
-    let onAllEmoji: () -> Void
 
     private enum Tab { case emoji, symbols }
     @State private var tab: Tab
+    /// All emoji… is waiting for the Character Viewer to type an emoji into the catcher.
+    @State private var catchingEmoji = false
 
-    init(current: NoteIcon?, recent: String, onPick: @escaping (NoteIcon?) -> Void,
-         onAllEmoji: @escaping () -> Void) {
+    init(current: NoteIcon?, recent: String, onPick: @escaping (NoteIcon?) -> Void) {
         self.current = current
         self.recent = recent
         self.onPick = onPick
-        self.onAllEmoji = onAllEmoji
         if case .symbol = current { _tab = State(initialValue: .symbols) } else { _tab = State(initialValue: .emoji) }
     }
 
@@ -66,8 +65,11 @@ struct IconPicker: View {
 
             HStack(spacing: 12) {
                 if tab == .emoji {
-                    Button(action: onAllEmoji) { Label("All emoji…", systemImage: "ellipsis") }
+                    Button { catchingEmoji = true } label: { Label("All emoji…", systemImage: "ellipsis") }
                         .help("Opens the macOS Character Viewer")
+                    // macOS opens the viewer at the text cursor of what has the keyboard: this field, so it comes up
+                    // beside the menu, and the menus stay open.
+                    EmojiCatcher(isActive: $catchingEmoji) { onPick(.emoji($0)) }.frame(width: 1, height: 1)
                 }
                 Spacer(minLength: 0)
                 // An eraser, not a trash can: this clears the icon, the list stays.
@@ -84,10 +86,8 @@ struct IconPicker: View {
     }
 }
 
-/// An invisible one-character field in the note that takes what the Character Viewer types: All emoji… makes
-/// it first responder, and the first emoji typed into it becomes the icon. It's in the note, not the ⋯ menu,
-/// because the viewer types into the window that has the keyboard, and that has to be the note, so the menu
-/// steps aside while the viewer is up and comes back once an emoji arrives (`NoteHeaderView`).
+/// An invisible one-character field that takes what the Character Viewer types: All emoji… makes it first responder
+/// in its window (the icon picker) and opens the viewer, and the first emoji typed into it becomes the icon.
 struct EmojiCatcher: NSViewRepresentable {
     @Binding var isActive: Bool
     let onEmoji: (String) -> Void

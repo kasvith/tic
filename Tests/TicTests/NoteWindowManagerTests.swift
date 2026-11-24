@@ -395,8 +395,8 @@ struct EdgeDockTests {
         try await waitFor { panel.frame.width == DockLayout.sliverWidth }
     }
 
-    @Test("an open docked note stays out while All emoji… waits for the Character Viewer, where the pointer has gone")
-    func staysOutWhilePickingEmoji() async throws {
+    @Test("an open docked note with its ⋯ menu up stays out, though the keyboard and the pointer went elsewhere")
+    func staysOutWhileItsMenuIsOpen() async throws {
         _ = NSApplication.shared
         guard let target = outerEdge() else { return }
         let (manager, panel, note, _) = try await openDocked(target)
@@ -405,12 +405,19 @@ struct EdgeDockTests {
         manager.pointerLocation = { pointer }
         manager.openNote(note)
         try await waitFor { panel.frame.width == 280 }
-        let controller = try #require(manager.controllers[note.id])   // the pointer leaves at once, as it may
-        controller.isPickingEmoji = true
-        pointer = NSPoint(x: target.display.visible.midX, y: target.display.visible.midY)   // over at the viewer
+        // The ⋯ popover (and All emoji…'s viewer beside it): a child window that has the keyboard and the pointer.
+        let menu = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 10, height: 10), styleMask: .borderless,
+                            backing: .buffered, defer: false)
+        menu.alphaValue = 0
+        menu.ignoresMouseEvents = true
+        menu.isReleasedWhenClosed = false
+        panel.addChildWindow(menu, ordered: .above)
+        manager.windowDidResignKey(Notification(name: NSWindow.didResignKeyNotification, object: panel))
+        pointer = NSPoint(x: target.display.visible.midX, y: target.display.visible.midY)
         try await Task.sleep(for: .milliseconds(1500))
         #expect(panel.frame.width == 280)
-        controller.isPickingEmoji = false   // the emoji arrived (or the viewer was given up)
+        panel.removeChildWindow(menu)
+        menu.close()   // the menu closed: elsewhere is where you are, so it goes back
         try await waitFor { panel.frame.width == DockLayout.sliverWidth }
     }
 
