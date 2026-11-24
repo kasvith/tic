@@ -40,6 +40,9 @@ struct Note: Identifiable, Equatable, Codable, Sendable {
     /// Kept out of screen shares and recordings where macOS allows, and covered while sharing. Synced, since
     /// a sensitive list is sensitive on every Mac.
     var isPrivate: Bool
+    /// Docked to a display's left or right edge as a tab (nil: a free note). Per Mac, like the frame: while
+    /// docked, the frame is where the note shows when it peeks.
+    var dockEdge: DockEdge?
 
     init(
         id: UUID = UUID(),
@@ -61,7 +64,8 @@ struct Note: Identifiable, Equatable, Codable, Sendable {
         moveCompletedToBottom: Bool = false,
         isSynced: Bool = false,
         icon: String? = nil,
-        isPrivate: Bool = false
+        isPrivate: Bool = false,
+        dockEdge: DockEdge? = nil
     ) {
         self.id = id
         self.title = title
@@ -83,6 +87,7 @@ struct Note: Identifiable, Equatable, Codable, Sendable {
         self.isSynced = isSynced
         self.icon = icon
         self.isPrivate = isPrivate
+        self.dockEdge = dockEdge
     }
 }
 

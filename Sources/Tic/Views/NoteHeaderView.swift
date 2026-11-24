@@ -69,7 +69,8 @@ struct NoteHeaderView: View {
         }
         .padding(.horizontal, 16)
         // The header is the window's drag handle; double-clicking its chrome rolls the note up or down.
-        .background(WindowMoveArea { controller.toggleCollapsed() })
+        // Docked, the note always peeks at full size, so there's no rolling up.
+        .background(WindowMoveArea { if !controller.isDocked { controller.toggleCollapsed() } })
         .background(alignment: .leading) {
             EmojiCatcher(isActive: $catchingEmoji) { controller.setIcon(.emoji($0)) }.frame(width: 1, height: 1)
         }
@@ -186,7 +187,7 @@ struct NoteHeaderView: View {
     private var controls: some View {
         HStack(spacing: 6) {
             if !isRolledUp { optionsButton }
-            collapseButton
+            if !controller.isDocked { collapseButton }
             floatButton
             closeButton
         }
@@ -319,6 +320,10 @@ extension NoteHeaderView {
 
             VStack(alignment: .leading, spacing: 8) {
                 popoverAction("New List", systemImage: "plus") { controller.requestNewNote() }
+                popoverAction(controller.isDocked ? "Undock" : "Dock to Edge",
+                              systemImage: controller.isDocked ? "rectangle.portrait.and.arrow.right" : "sidebar.right") {
+                    controller.onToggleDock?()
+                }
                 // A "tidy up" wand rather than a trash can — this clears finished items, it isn't a delete.
                 let done = controller.completedCount
                 popoverAction(done > 0 ? "Clean Up \(done) Completed…" : "Clean Up Completed…",

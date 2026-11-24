@@ -49,13 +49,14 @@ final class NotePanel: NSPanel {
         apply(floatOnTop: note.floatOnTop, showOnAllSpaces: note.showOnAllSpaces)
     }
 
-    /// Rolled up, the note drops the system frame and draws its own capsule (`NoteBackground`): macOS rounds
-    /// a titled window's corners at a fixed 16pt, too round for a thin bar — the system outline and corner
-    /// mask split away from the note's fill at both ends. It drops the system shadow too: a frameless
-    /// window's shadow traces the capsule with a dark rim, which reads as a border on a light desktop.
-    func setRolledUp(_ rolledUp: Bool) {
-        styleMask = rolledUp ? [.borderless, .resizable, .nonactivatingPanel] : Self.noteStyle
-        hasShadow = !rolledUp
+    /// Rolled up or docked as a tab, the note drops the system frame and draws its own shape (a capsule, a
+    /// tab): macOS rounds a titled window's corners at a fixed 16pt, too round for a thin bar — the system
+    /// outline and corner mask split away from the note's fill at both ends. It drops the system shadow too:
+    /// a frameless window's shadow traces the shape with a dark rim, which reads as a border on a light desktop.
+    func setFrameless(_ frameless: Bool) {
+        guard styleMask.contains(.titled) == frameless else { return }
+        styleMask = frameless ? [.borderless, .resizable, .nonactivatingPanel] : Self.noteStyle
+        hasShadow = !frameless
         hideWindowButtons()   // a titled frame comes back with fresh traffic lights
     }
 
@@ -67,13 +68,14 @@ final class NotePanel: NSPanel {
     }
 
     /// Applies the float-on-top and show-on-all-Spaces behaviours to the live window. All Spaces only counts
-    /// while pinned (⋯ › Over full-screen apps shows only then): joining every Space, full-screen apps' included,
-    /// with `.fullScreenAuxiliary` is what keeps a pinned note above an app in full screen. A Dock-icon app
-    /// can do this because the panel is non-activating (checked on macOS 26, Nov 2026).
-    func apply(floatOnTop: Bool, showOnAllSpaces: Bool) {
+    /// while pinned (⋯ › Over full-screen apps shows only then), or for a docked tab when Settings says tabs
+    /// show over full-screen apps: joining every Space, full-screen apps' included, with `.fullScreenAuxiliary`
+    /// is what keeps a note above an app in full screen. A Dock-icon app can do this because the panel is
+    /// non-activating (checked on macOS 26, Nov 2026).
+    func apply(floatOnTop: Bool, showOnAllSpaces: Bool, tabOnAllSpaces: Bool = false) {
         level = floatOnTop ? .floating : .normal
         var behavior: NSWindow.CollectionBehavior = [.fullScreenAuxiliary]
-        if floatOnTop && showOnAllSpaces { behavior.insert(.canJoinAllSpaces) }
+        if (floatOnTop && showOnAllSpaces) || tabOnAllSpaces { behavior.insert(.canJoinAllSpaces) }
         collectionBehavior = behavior
     }
 
@@ -83,22 +85,50 @@ final class NotePanel: NSPanel {
     /// Called when a drag by the note's header has been let go. Set by `NoteWindowManager`.
     var onDragEnded: (() -> Void)?
 
+    /// Picks the frame for each step of a drag, given the pointer and the frame a plain move would give (the
+    /// size at the drag's start): the manager folds a note into a tab at a display edge, and back. Set by
+    /// `NoteWindowManager`; without it the note just moves.
+    var onDragMove: ((_ pointer: NSPoint, _ proposed: NSRect) -> NSRect)?
+
     /// Moves the note with the pointer from `press` (the header's mouse-down, `WindowMoveArea`) until mouse-up.
     /// Not the system's window drag: that returns at once, macOS settles or tiles a window let go at a screen
     /// edge (fighting the bottom snap, issue 18), and its session swallowed a double-click's second click.
     /// The top edge stays below the menu bar, as the system drag kept it.
     override func performDrag(with press: NSEvent) {
         let start = convertPoint(toScreen: press.locationInWindow)
-        let origin = frame.origin
+        let startFrame = frame
         while let event = nextEvent(matching: [.leftMouseDragged, .leftMouseUp]), event.type == .leftMouseDragged {
             let pointer = NSEvent.mouseLocation
-            var next = NSPoint(x: origin.x + pointer.x - start.x, y: origin.y + pointer.y - start.y)
+            var next = NSPoint(x: startFrame.minX + pointer.x - start.x, y: startFrame.minY + pointer.y - start.y)
             if let screen = NSScreen.screens.first(where: { $0.frame.contains(pointer) }) {
-                next.y = min(next.y, screen.visibleFrame.maxY - frame.height)
+                next.y = min(next.y, screen.visibleFrame.maxY - startFrame.height)
             }
-            setFrameOrigin(next)
+            let proposed = NSRect(origin: next, size: startFrame.size)
+            setFrame(onDragMove?(pointer, proposed) ?? proposed, display: true)
         }
         onDragEnded?()
+    }
+
+    /// Until then, a press only keeps a just-peeked note out: aimed at the tab, it mustn't land on whatever slid
+    /// under the pointer as the note came out (its close button, a checkbox). Set by `NoteWindowManager`.
+    var shieldClicksUntil = Date.distantPast
+    var onShieldedClick: (() -> Void)?
+    private var shieldingPress = false
+
+    override func sendEvent(_ event: NSEvent) {
+        switch event.type {
+        case .leftMouseDown where Date() < shieldClicksUntil:
+            shieldingPress = true
+            onShieldedClick?()
+            return
+        case .leftMouseDragged where shieldingPress:
+            return
+        case .leftMouseUp where shieldingPress:
+            shieldingPress = false
+            return
+        default:
+            super.sendEvent(event)
+        }
     }
 
     // MARK: - Paste

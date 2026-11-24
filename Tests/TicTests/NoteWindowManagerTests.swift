@@ -86,16 +86,23 @@ struct NoteWindowManagerTests {
         defer { panel.close() }
 
         // Where a header drag let go (`NotePanel.performDrag` ends with `onDragEnded`).
-        func drop(atHeight y: CGFloat, dragged: Bool = true) async throws {
+        func drop(atHeight y: CGFloat, dragged: Bool = true) {
             panel.setFrameOrigin(NSPoint(x: screen.minX + 100, y: screen.minY + y))
             if dragged { panel.onDragEnded?() }
-            try await Task.sleep(for: .milliseconds(400))   // the whole glide: rounded to points, it lands early
         }
-        try await drop(atHeight: 30)   // within the snap
-        #expect(panel.frame.minY == screen.minY)
-        try await drop(atHeight: 200)
+        // The glide is a 0.22 s animation; with the whole suite running it can take a good deal longer.
+        func settles(at y: CGFloat) async throws -> Bool {
+            let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+            while panel.frame.minY != y, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(20)) }
+            return panel.frame.minY == y
+        }
+        drop(atHeight: 30)   // within the snap
+        #expect(try await settles(at: screen.minY))
+        drop(atHeight: 200)
+        try await Task.sleep(for: .milliseconds(400))   // long enough for a glide that shouldn't happen
         #expect(panel.frame.minY == screen.minY + 200)
-        try await drop(atHeight: 30, dragged: false)   // moved, not dragged by the user: left alone
+        drop(atHeight: 30, dragged: false)   // moved, not dragged by the user: left alone
+        try await Task.sleep(for: .milliseconds(400))
         #expect(panel.frame.minY == screen.minY + 30)
     }
 
@@ -237,5 +244,86 @@ struct PrivateListTests {
         #expect(openPanel.sharingType == .none)
         manager.everyListPrivate = false
         #expect(openPanel.sharingType == .readOnly)
+    }
+}
+
+@MainActor
+@Suite("Edge dock")
+struct EdgeDockTests {
+    /// A point on an outer edge of one of this Mac's displays (nil if every edge is a seam).
+    private func outerEdge() -> (pointer: CGPoint, edge: DockEdge, display: DockLayout.Display)? {
+        for display in NoteWindowManager.displays {
+            let mid = display.frame.midY
+            for x in [display.frame.minX + 1, display.frame.maxX - 1] {
+                if let hit = DockLayout.edge(at: CGPoint(x: x, y: mid), in: NoteWindowManager.displays) {
+                    return (CGPoint(x: x, y: mid), hit.edge, hit.display)
+                }
+            }
+        }
+        return nil
+    }
+
+    @Test("dragging a note to an outer edge folds it into a tab; pulling it out unfolds it, full size, where it's let go")
+    func dockAndUndockByDrag() async throws {
+        _ = NSApplication.shared
+        guard let target = outerEdge() else { return }
+        let db = try AppDatabase.makeInMemory()
+        let display = target.display.visible
+        let note = Note(title: "Groceries", frameX: display.midX - 140, frameY: display.midY - 180, frameW: 280, frameH: 360)
+        try await db.insert(note)
+        let manager = NoteWindowManager(appDatabase: db)
+        let panel = manager.openNote(note, makeKey: false)
+        defer { panel.close() }
+
+        // Drag the header to the edge: the note folds into its tab there, frameless.
+        let folded = try #require(panel.onDragMove?(target.pointer, panel.frame))
+        #expect(folded.width == DockLayout.maxTabWidth)
+        #expect(target.edge == .left ? folded.minX == display.minX : folded.maxX == display.maxX)
+        #expect(!panel.styleMask.contains(.titled))
+        panel.setFrame(folded, display: false)
+        panel.onDragEnded?()
+        #expect(panel.frame.width <= DockLayout.maxTabWidth)
+        try await waitFor { try await db.note(id: note.id)?.dockEdge == target.edge }
+
+        // Pull it back out to the middle: the note unfolds at its own size, with its frame back.
+        let middle = CGPoint(x: display.midX, y: display.midY)
+        let unfolded = try #require(panel.onDragMove?(middle, panel.frame))
+        #expect(unfolded.size == CGSize(width: 280, height: 360))
+        #expect(panel.styleMask.contains(.titled))
+        panel.setFrame(unfolded, display: false)
+        panel.onDragEnded?()
+        try await waitFor { try await db.note(id: note.id)?.dockEdge == nil }
+    }
+
+    /// Under the whole suite's load a database write can take over a second, so this waits up to 10.
+    private func waitFor(_ condition: @escaping () async throws -> Bool, timeout: Duration = .seconds(10)) async throws {
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+        while ContinuousClock.now < deadline {
+            if try await condition() { return }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        Issue.record("timed out")
+    }
+}
+
+@MainActor
+@Suite("Peek click shield")
+struct PeekClickShieldTests {
+    @Test("while shielded, a press only reports itself and its drag and release are swallowed too")
+    func shieldSwallowsPress() {
+        _ = NSApplication.shared
+        let panel = NotePanel(note: Note(), content: AnyView(Color.clear))
+        defer { panel.close() }
+        var shielded = 0
+        panel.onShieldedClick = { shielded += 1 }
+        panel.shieldClicksUntil = Date().addingTimeInterval(5)
+        func mouse(_ type: NSEvent.EventType) -> NSEvent {
+            NSEvent.mouseEvent(with: type, location: NSPoint(x: 10, y: 10), modifierFlags: [], timestamp: 0,
+                               windowNumber: panel.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
+        }
+        panel.sendEvent(mouse(.leftMouseDown))
+        panel.sendEvent(mouse(.leftMouseDragged))
+        panel.sendEvent(mouse(.leftMouseUp))
+        #expect(shielded == 1)
     }
 }

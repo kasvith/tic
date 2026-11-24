@@ -146,6 +146,12 @@ final class AppDatabase: Sendable {
             }
         }
 
+        migrator.registerMigration("v8_note_dock") { db in
+            try db.alter(table: "note") { t in
+                t.add(column: "dockEdge", .text)
+            }
+        }
+
         return migrator
     }
 
@@ -261,6 +267,13 @@ final class AppDatabase: Sendable {
     func updateNoteSynced(id: UUID, isSynced: Bool) async throws {
         try await dbQueue.write { db in
             try db.execute(sql: "UPDATE note SET isSynced = ? WHERE id = ?", arguments: [isSynced, id])
+        }
+    }
+
+    /// Targeted write of the edge a note is docked to (nil: undocked). Per Mac, never synced.
+    func updateNoteDock(id: UUID, edge: DockEdge?) async throws {
+        try await dbQueue.write { db in
+            try db.execute(sql: "UPDATE note SET dockEdge = ? WHERE id = ?", arguments: [edge?.rawValue, id])
         }
     }
 

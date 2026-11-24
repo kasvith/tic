@@ -52,6 +52,20 @@ final class NoteController {
     /// Drawn as a plain cover right now: no title, no icon, no tasks.
     var isCovered: Bool { coveringPrivate && isPrivate }
 
+    // Edge dock, driven by `NoteWindowManager` (which keeps its own record: the note row can lag).
+    /// Docked to a display edge (shown as a tab, or peeking out of one).
+    var isDocked = false
+    /// The edge the tab sits against: while docked, and while a drag holds the note folded at an edge.
+    var tabEdge: DockEdge = .right
+    /// How tabs look (Settings › General › Docked tabs).
+    var dockTabStyle: DockTabStyle = .titleCount
+    /// The pointer entered or left the note's window (a tab peeks on hover, a peek goes back on leave).
+    @ObservationIgnored var onPointerInside: ((Bool) -> Void)?
+    /// A click on the tab: open it and keep it open.
+    @ObservationIgnored var onTabClick: (() -> Void)?
+    /// ⋯ › Dock to Edge / Undock.
+    @ObservationIgnored var onToggleDock: (() -> Void)?
+
     init(note: Note, database: AppDatabase) {
         self.noteID = note.id
         self.note = note
@@ -454,6 +468,15 @@ extension NoteController {
         note.icon = stored
         let id = noteID
         Task { [db] in try? await db.updateNoteIcon(id: id, icon: stored) }
+    }
+
+    /// Persists the edge the note is docked to (nil: undocked). The window side is the manager's. Always
+    /// written, never skipped as unchanged: `note` can still hold a stale row from its observation (seen under
+    /// load), and skipping on that left a note docked in the database after it was undocked.
+    func setDockEdge(_ edge: DockEdge?) {
+        note.dockEdge = edge
+        let id = noteID
+        Task { [db] in try? await db.updateNoteDock(id: id, edge: edge) }
     }
 
     /// ⋯ › Private.

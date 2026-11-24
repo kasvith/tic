@@ -59,6 +59,15 @@ private struct GeneralSettings: View {
                     Text("Open Tic and its notes when you log in.")
                 }
             }
+            Section("Docked tabs") {
+                Picker("Tab style", selection: Binding(get: { model.dockTabStyle }, set: { model.setDockTabStyle($0) })) {
+                    ForEach(DockTabStyle.allCases) { Text($0.label).tag($0) }
+                }
+                Toggle(isOn: Binding(get: { model.tabsOverFullScreen }, set: { model.setTabsOverFullScreen($0) })) {
+                    Text("Show tabs over full-screen apps")
+                    Text("Docked tabs also appear on every desktop and over apps in full screen.")
+                }
+            }
             Section("Privacy") {
                 Toggle(isOn: Binding(get: { model.everyListPrivate }, set: { model.setEveryListPrivate($0) })) {
                     Text("Treat every list as private")
@@ -86,7 +95,7 @@ private struct GeneralSettings: View {
             }
         }
         .formStyle(.grouped)
-        .frame(height: 350)
+        .frame(height: 470)
     }
 
     private var updateStatus: String {

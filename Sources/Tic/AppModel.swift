@@ -58,6 +58,8 @@ final class AppModel {
     /// Run once after launch: open saved note panels, then start streaming the notes list.
     func bootstrap() async {
         windows.everyListPrivate = everyListPrivate
+        windows.dockTabStyle = dockTabStyle
+        windows.tabsOverFullScreen = tabsOverFullScreen
         await windows.restoreAll()
         startObservingNotes()
         applyLaunchAtLogin(launchAtLogin)   // honor the saved preference (effective when packaged)
@@ -201,6 +203,30 @@ final class AppModel {
     func setCoveringPrivate(_ on: Bool) {
         coveringPrivate = on
         windows.coveringPrivate = on
+    }
+
+    // MARK: - Edge dock
+
+    private static let dockTabStyleKey = "dockTabStyle"
+    private static let tabsOverFullScreenKey = "dockTabsOverFullScreen"
+
+    /// Settings › General › Docked tabs: how a docked note's tab looks.
+    private(set) var dockTabStyle: DockTabStyle =
+        DockTabStyle(rawValue: UserDefaults.standard.string(forKey: AppModel.dockTabStyleKey) ?? "") ?? .titleCount
+
+    func setDockTabStyle(_ style: DockTabStyle) {
+        dockTabStyle = style
+        UserDefaults.standard.set(style.rawValue, forKey: Self.dockTabStyleKey)
+        windows.dockTabStyle = style
+    }
+
+    /// Settings › General › Show tabs over full-screen apps (off: tabs stay on their own desktop).
+    private(set) var tabsOverFullScreen: Bool = UserDefaults.standard.bool(forKey: AppModel.tabsOverFullScreenKey)
+
+    func setTabsOverFullScreen(_ on: Bool) {
+        tabsOverFullScreen = on
+        UserDefaults.standard.set(on, forKey: Self.tabsOverFullScreenKey)
+        windows.tabsOverFullScreen = on
     }
 
     // MARK: - MCP (AI agents)

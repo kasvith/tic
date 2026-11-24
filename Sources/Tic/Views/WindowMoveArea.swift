@@ -5,20 +5,24 @@ import AppKit
 /// handle) and reports double-clicks (for roll-up). Used because whole-window background dragging
 /// is disabled on the panel — so dragging a task row reorders it instead of moving the window.
 struct WindowMoveArea: NSViewRepresentable {
+    var onClick: () -> Void = {}
     var onDoubleClick: () -> Void = {}
 
     func makeNSView(context: Context) -> NSView {
-        MoveView(onDoubleClick: onDoubleClick)
+        MoveView(onClick: onClick, onDoubleClick: onDoubleClick)
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {
+        (nsView as? MoveView)?.onClick = onClick
         (nsView as? MoveView)?.onDoubleClick = onDoubleClick
     }
 
     final class MoveView: NSView {
+        var onClick: () -> Void
         var onDoubleClick: () -> Void
 
-        init(onDoubleClick: @escaping () -> Void) {
+        init(onClick: @escaping () -> Void, onDoubleClick: @escaping () -> Void) {
+            self.onClick = onClick
             self.onDoubleClick = onDoubleClick
             super.init(frame: .zero)
         }
@@ -45,6 +49,10 @@ struct WindowMoveArea: NSViewRepresentable {
             window?.performDrag(with: press)   // a note's own drag (`NotePanel`), else the system's
         }
 
-        override func mouseUp(with event: NSEvent) { pendingPress = nil }
+        /// A press let go without moving: a click (a docked tab opens on one).
+        override func mouseUp(with event: NSEvent) {
+            if pendingPress != nil { onClick() }
+            pendingPress = nil
+        }
     }
 }

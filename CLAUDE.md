@@ -151,6 +151,19 @@ panels**, and a few responsibilities are deliberately split across the AppKit/Sw
   reach"), and skips files with a newer `schema` — bump it when the format changes **or `NoteColor` /
   `NoteMaterial` gains a case**. A field added as an *optional* register (`SyncNote.icon`, `isPrivate`)
   needs no bump: older files still decode and older Macs ignore it. Off by default (`syncEnabled` default).
+- **Edge dock (`DockLayout`, pure + `NoteWindowManager` › Edge dock)** — drag a note's header to an outer
+  left/right display edge (never a seam between displays) and it folds into a tab; `note.dockEdge` is per
+  Mac (not synced), and while docked the saved frame is where it **peeks**. Tab and peek are the same panel
+  resized: `NoteView` draws `DockTabView` whenever the window is ≤ `DockLayout.maxTabWidth` wide (a note
+  is never that narrow), as it draws the bar by height, so the manager only sets frames. `NotePanel.performDrag`
+  asks `onDragMove` for each step's frame. Hover peeks after 0.15 s, leaving retracts after 0.4 s, a click
+  (or becoming key) keeps it out until it resigns key; a hover-peek shields clicks for 0.35 s
+  (`shieldClicksUntil`) so a click aimed at the tab can't land on the close button that slid under it. Tabs
+  sit at normal level; a global `mouseMoved` monitor (installed only while something is docked and the app's
+  event loop runs, since in tests it stalled the main thread) brings an edge's tabs forward while pointed at.
+  The manager keeps its own `dockEdges`: the controller's `note` can hold a stale observed row, so
+  `setDockEdge` always writes (skipping "unchanged" once left a note docked in the DB after undocking).
+  Settings › General › Docked tabs: style (`dockTabStyle`) and Show tabs over full-screen apps.
 - **List icons (`NoteIcon`, pure)** — `note.icon` holds one emoji or `symbol:<name>` from a fixed set of
   SF Symbols every macOS 14 has (so any Mac draws what another picked; anything else reads as no icon).
   Emoji draw in colour, symbols in the note's title ink (`NoteIconView`). ⋯ › Icon is one row opening
