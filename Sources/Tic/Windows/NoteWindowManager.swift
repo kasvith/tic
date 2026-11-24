@@ -59,6 +59,8 @@ final class NoteWindowManager: NSObject, NSWindowDelegate {
     /// Tabs slid out from their sliver because the pointer is on them.
     private var hoveredTabs: Set<UUID> = []
     private var hoverTasks: [UUID: Task<Void, Never>] = [:]
+    /// Where the pointer is (global coordinates). Swapped in tests.
+    var pointerLocation: @MainActor () -> NSPoint = { NSEvent.mouseLocation }
 
     /// Notes let go of all Spaces while their display showed a full-screen app: hidden until it shows a desktop.
     private var parked: Set<UUID> = []
@@ -584,6 +586,7 @@ extension NoteWindowManager {
               let display = DockLayout.display(for: tab, in: Self.displays) else { return }
         retractTasks.removeValue(forKey: id)?.cancel()
         hoveredTabs.remove(id)
+        hoverTasks.removeValue(forKey: id)?.cancel()
         panel.level = .floating
         guard peeks.insert(id).inserted else { return panel.makeKeyAndOrderFront(nil) }
         panel.alphaValue = 0
@@ -637,6 +640,7 @@ extension NoteWindowManager {
             retractTasks.removeValue(forKey: id)?.cancel()
             peeks.remove(id)
             hoveredTabs.remove(id)
+            hoverTasks.removeValue(forKey: id)?.cancel()
             panel.alphaValue = 1
         }
         if let hit = DockLayout.edge(at: pointer, in: Self.displays) {
@@ -732,31 +736,40 @@ extension NoteWindowManager {
 
     // MARK: Hover
 
-    /// The pointer is on a resting sliver: it slides out into the full tab, and back 0.12 s after the pointer
-    /// leaves (so brushing past doesn't flicker).
-    private func tabHover(_ id: UUID, inside: Bool) {
-        guard dockEdges[id] != nil, !peeks.contains(id), drags[id] == nil else { return }
-        hoverTasks.removeValue(forKey: id)?.cancel()
-        if inside {
-            if hoveredTabs.insert(id).inserted { slideTab(id) }
-            return
-        }
+    /// The pointer came onto a resting sliver: it slides out into the full tab. It goes back once the pointer has
+    /// really been off the tab for ~0.1 s, checked by where the pointer is: the tracking area's own "left" isn't
+    /// trusted here, since following it made a hovered tab flash in and out while its window resized.
+    func tabHover(_ id: UUID, inside: Bool) {
+        guard inside, dockEdges[id] != nil, !peeks.contains(id), drags[id] == nil,
+              hoveredTabs.insert(id).inserted else { return }
+        slideTab(id)
+        hoverTasks[id]?.cancel()
         hoverTasks[id] = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(120))
-            guard !Task.isCancelled, let self, self.hoveredTabs.remove(id) != nil else { return }
-            self.slideTab(id)
+            var outside = 0
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(40))
+                guard let self, self.hoveredTabs.contains(id), let tab = self.tabFrames[id] else { return }
+                outside = tab.insetBy(dx: -2, dy: -2).contains(self.pointerLocation()) ? 0 : outside + 1
+                if outside >= 3 {
+                    self.hoveredTabs.remove(id)
+                    self.slideTab(id)
+                    return
+                }
+            }
         }
     }
 
-    /// Out to the full tab or back to the sliver, with a little spring. A tab is tiny, so animating its frame
-    /// is cheap (unlike a whole note's).
+    /// Out to the full tab with a little spring, or back to the sliver (no overshoot: a sliver shrunk past its
+    /// width would slip out from under the pointer). A tab is tiny, so animating its frame is cheap.
     private func slideTab(_ id: UUID) {
         guard let panel = panels[id], let tab = tabFrames[id], let edge = dockEdges[id] else { return }
         let out = hoveredTabs.contains(id)
         panel.hasShadow = out
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.22
-            context.timingFunction = CAMediaTimingFunction(controlPoints: 0.34, 1.3, 0.64, 1)
+            context.duration = out ? 0.22 : 0.16
+            context.timingFunction = out
+                ? CAMediaTimingFunction(controlPoints: 0.34, 1.3, 0.64, 1)
+                : CAMediaTimingFunction(name: .easeOut)
             panel.animator().setFrame(out ? tab : DockLayout.restFrame(of: tab, at: edge), display: true)
         }
     }

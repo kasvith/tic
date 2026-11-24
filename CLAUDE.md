@@ -162,7 +162,9 @@ panels**, and a few responsibilities are deliberately split across the AppKit/Sw
   growing the window from tab to note re-laid out the whole list every frame and lagged. A docked note
   **rests as a 6pt sliver** (`DockLayout.restFrame`) on top of every window, so nothing can hide it; hovering
   springs the window out to the full tab (`tabHover` / `slideTab`, cheap since a tab lays out almost nothing),
-  whose content fades in with its width. (An earlier design kept tabs under windows and watched the pointer
+  whose content fades in with its width. It goes back only once `pointerLocation` has really been off the tab
+  for ~0.1 s: following the tracking area's "left" made a hovered tab flash in and out (most likely spurious leaves
+  while its window resized under a still pointer; not confirmed). (An earlier design kept tabs under windows and watched the pointer
   with a global `mouseMoved` monitor; in tests installing that stalled the main thread. Gone with the sliver.)
   The manager keeps its own `dockEdges`: the controller's `note` can hold a stale observed row, so
   `setDockEdge` always writes (skipping "unchanged" once left a note docked in the DB after undocking).

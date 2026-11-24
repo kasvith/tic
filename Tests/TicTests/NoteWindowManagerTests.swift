@@ -296,6 +296,32 @@ struct EdgeDockTests {
     }
 
     /// Under the whole suite's load a database write can take over a second, so this waits up to 10.
+    @Test("a hovered sliver slides out and stays out while the pointer is on it, whatever leave is reported")
+    func hoverSlidesOutAndBack() async throws {
+        _ = NSApplication.shared
+        guard let target = outerEdge() else { return }
+        let db = try AppDatabase.makeInMemory()
+        let display = target.display.visible
+        let note = Note(title: "Groceries", frameX: display.midX - 140, frameY: display.midY - 180, frameW: 280, frameH: 360,
+                        dockEdge: target.edge)
+        try await db.insert(note)
+        let manager = NoteWindowManager(appDatabase: db)
+        let panel = manager.openNote(note, makeKey: false)
+        defer { panel.close() }
+        #expect(panel.frame.width == DockLayout.sliverWidth)   // opens resting as its sliver
+
+        var pointer = NSPoint(x: panel.frame.midX, y: panel.frame.midY)
+        manager.pointerLocation = { pointer }
+        manager.tabHover(note.id, inside: true)
+        try await waitFor { panel.frame.width == DockLayout.maxTabWidth }
+        manager.tabHover(note.id, inside: false)   // a leave reported while the pointer is still on it
+        try await Task.sleep(for: .milliseconds(400))
+        #expect(panel.frame.width == DockLayout.maxTabWidth)
+
+        pointer = NSPoint(x: display.midX, y: display.midY)   // really gone
+        try await waitFor { panel.frame.width == DockLayout.sliverWidth }
+    }
+
     private func waitFor(_ condition: @escaping () async throws -> Bool, timeout: Duration = .seconds(10)) async throws {
         let deadline = ContinuousClock.now.advanced(by: timeout)
         while ContinuousClock.now < deadline {
