@@ -161,9 +161,17 @@ panels**, and a few responsibilities are deliberately split across the AppKit/Sw
   the saved frame is where it **peeks**. Tab and peek are the same panel: `NoteView` draws `DockTabView`
   whenever the window is ≤ `DockLayout.maxTabWidth` wide (a note is never that narrow), as it draws the bar
   by height, so the manager only sets frames. `NotePanel.performDrag` asks `onDragMove` for each step's frame.
-  A **click** on the tab opens the note (no hover: users found it jumpy); it goes back once the panel resigns
-  key (not to its own ⋯ popover). Opening and closing fade at full size instead of animating the frame:
-  growing the window from tab to note re-laid out the whole list every frame and lagged. A docked note
+  A **click** on the tab opens the note (no hover: users found it jumpy) with its quick-add taking the keyboard
+  (`autoFocus` while docked: the list is built afresh each time it opens). It goes back on a click elsewhere (resign
+  key), Esc (`NotePanel.cancelOperation`; an empty editor passes Esc on), the header's →|, or by itself a second after
+  the pointer has left it (`watchPointer`: only once the pointer has been on it, never with typed text not yet in, nor
+  while `isInUse`: a drag or resize, its popover or a sheet, its picture, a menu via `menusOpen`). Going back while key
+  hands the keyboard back to the app you were in (a brief `orderOut`), or the tab kept taking your typing. Open, its
+  header shows →| and a lit dock button (Undock) instead of roll-up and the pin; Undock (that button, ⋯, the tab's
+  right-click menu) slides it 40pt in from the edge. Opening slides the window 18pt out of its edge as it fades in, and
+  closing slides it back (no slide with Reduce Motion): only the origin animates, never the size, since growing the
+  window from tab to note re-laid out the whole list every frame and lagged. The list lays out synchronously at alpha 0
+  first (probed: about 34 ms). A docked note
   **rests as a 6pt sliver** (`DockLayout.restFrame`) on top of every window, so nothing can hide it; hovering
   springs the window out to the full tab (`tabHover` / `slideTab`, cheap since a tab lays out almost nothing),
   whose content fades in with its width. It goes back only once `pointerLocation` has really been off the tab

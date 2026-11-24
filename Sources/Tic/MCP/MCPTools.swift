@@ -345,29 +345,6 @@ struct MCPTools: Sendable {
         return Array(normalized.suffix(built.count))
     }
 
-    private func color(_ raw: String) throws -> NoteColor {
-        guard let c = NoteColor(rawValue: raw.lowercased()) else {
-            throw ToolError("Unknown color '\(raw)'. Options: \(NoteColor.allCases.map(\.rawValue).joined(separator: ", "))")
-        }
-        return c
-    }
-
-    /// An emoji or "symbol:<name>"; an empty string means no icon.
-    private func noteIcon(_ raw: String) throws -> NoteIcon? {
-        let raw = raw.trimmed
-        if raw.isEmpty { return nil }
-        if let icon = NoteIcon(stored: raw) { return icon }
-        throw ToolError("Unknown icon '\(raw)'. Give one emoji, or symbol:<name> with a name from: "
-            + NoteIcon.symbols.joined(separator: ", ") + ". An empty string removes the icon.")
-    }
-
-    private func material(_ raw: String) throws -> NoteMaterial {
-        guard let m = NoteMaterial(rawValue: raw.lowercased()) else {
-            throw ToolError("Unknown material '\(raw)'. Options: solid, glass")
-        }
-        return m
-    }
-
     private func noteValue(_ n: Note, tasks: [TaskItem]?, imageIds: Set<UUID> = []) -> Value {
         var o: [String: Value] = [
             "id": .string(n.id.uuidString),
@@ -439,6 +416,33 @@ struct MCPTools: Sendable {
         }
     }
 
+}
+
+// MARK: - Argument parsing
+
+extension MCPTools {
+    private func color(_ raw: String) throws -> NoteColor {
+        guard let c = NoteColor(rawValue: raw.lowercased()) else {
+            throw ToolError("Unknown color '\(raw)'. Options: \(NoteColor.allCases.map(\.rawValue).joined(separator: ", "))")
+        }
+        return c
+    }
+
+    /// An emoji or "symbol:<name>"; an empty string means no icon.
+    private func noteIcon(_ raw: String) throws -> NoteIcon? {
+        let raw = raw.trimmed
+        if raw.isEmpty { return nil }
+        if let icon = NoteIcon(stored: raw) { return icon }
+        throw ToolError("Unknown icon '\(raw)'. Give one emoji, or symbol:<name> with a name from: "
+            + NoteIcon.symbols.joined(separator: ", ") + ". An empty string removes the icon.")
+    }
+
+    private func material(_ raw: String) throws -> NoteMaterial {
+        guard let m = NoteMaterial(rawValue: raw.lowercased()) else {
+            throw ToolError("Unknown material '\(raw)'. Options: solid, glass")
+        }
+        return m
+    }
 }
 
 private extension String {

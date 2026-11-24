@@ -187,8 +187,14 @@ struct NoteHeaderView: View {
     private var controls: some View {
         HStack(spacing: 6) {
             if !isRolledUp { optionsButton }
-            if !controller.isDocked { collapseButton }
-            floatButton
+            if controller.isDocked {
+                // Open out of its tab (a docked note shows no header otherwise). Roll-up and the pin do nothing here.
+                backToDockButton
+                dockButton
+            } else {
+                collapseButton
+                floatButton
+            }
             closeButton
         }
         .confirmationDialog(
@@ -213,6 +219,21 @@ struct NoteHeaderView: View {
         iconButton(systemName: isRolledUp ? "chevron.down" : "chevron.up", isActive: false,
                    help: isRolledUp ? "Expand" : "Roll up") {
             controller.toggleCollapsed()
+        }
+    }
+
+    private var backToDockButton: some View {
+        iconButton(systemName: controller.tabEdge == .left ? "arrow.left.to.line" : "arrow.right.to.line",
+                   isActive: false, help: "Back to dock (Esc)") {
+            controller.onPutBack?()
+        }
+    }
+
+    /// Lit while docked, as the pin is while pinned: a click takes the list out of the dock.
+    private var dockButton: some View {
+        iconButton(systemName: controller.tabEdge == .left ? "sidebar.left" : "sidebar.right",
+                   isActive: true, help: "Docked. Click to undock") {
+            controller.onToggleDock?()
         }
     }
 

@@ -7,19 +7,28 @@ import AppKit
 struct WindowMoveArea: NSViewRepresentable {
     var onClick: () -> Void = {}
     var onDoubleClick: () -> Void = {}
+    /// A right-click's menu, built when it's asked for.
+    var contextMenu: (() -> NSMenu)?
 
     func makeNSView(context: Context) -> NSView {
-        MoveView(onClick: onClick, onDoubleClick: onDoubleClick)
+        let view = MoveView(onClick: onClick, onDoubleClick: onDoubleClick)
+        view.contextMenu = contextMenu
+        return view
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {
-        (nsView as? MoveView)?.onClick = onClick
-        (nsView as? MoveView)?.onDoubleClick = onDoubleClick
+        guard let view = nsView as? MoveView else { return }
+        view.onClick = onClick
+        view.onDoubleClick = onDoubleClick
+        view.contextMenu = contextMenu
     }
 
     final class MoveView: NSView {
         var onClick: () -> Void
         var onDoubleClick: () -> Void
+        var contextMenu: (() -> NSMenu)?
+
+        override func menu(for event: NSEvent) -> NSMenu? { contextMenu?() ?? super.menu(for: event) }
 
         init(onClick: @escaping () -> Void, onDoubleClick: @escaping () -> Void) {
             self.onClick = onClick
@@ -59,4 +68,20 @@ struct WindowMoveArea: NSViewRepresentable {
             pendingPress = nil
         }
     }
+}
+
+/// A menu item that runs a closure (AppKit menus otherwise need a target object and a selector).
+final class ClosureMenuItem: NSMenuItem {
+    private let handler: () -> Void
+
+    init(_ title: String, handler: @escaping () -> Void) {
+        self.handler = handler
+        super.init(title: title, action: #selector(run), keyEquivalent: "")
+        target = self
+    }
+
+    @available(*, unavailable)
+    required init(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    @objc private func run() { handler() }
 }

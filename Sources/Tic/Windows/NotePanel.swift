@@ -86,6 +86,14 @@ final class NotePanel: NSPanel {
     /// (see `init`): a key non-activating panel takes the user's typing.
     override var canBecomeKey: Bool { NSApp?.isRunning == true }
 
+    /// Esc reached the note itself: nothing in it took it (an empty quick-add passes it on). A docked note that's
+    /// open goes back into its tab. Set by `NoteWindowManager`.
+    var onCancel: (() -> Void)?
+
+    override func cancelOperation(_ sender: Any?) {
+        if let onCancel { onCancel() } else { super.cancelOperation(sender) }
+    }
+
     /// Called when a drag by the note's header has been let go. Set by `NoteWindowManager`.
     var onDragEnded: (() -> Void)?
 

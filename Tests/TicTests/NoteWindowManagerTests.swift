@@ -364,6 +364,106 @@ struct EdgeDockTests {
         #expect(panel.frame.size == CGSize(width: 280, height: 360))
     }
 
+    /// A docked note on the outer edge, opened as its tab (as at launch).
+    private func openDocked(_ target: (pointer: CGPoint, edge: DockEdge, display: DockLayout.Display))
+        async throws -> (manager: NoteWindowManager, panel: NotePanel, note: Note, db: AppDatabase) {
+        let db = try AppDatabase.makeInMemory()
+        let display = target.display.visible
+        let note = Note(title: "Groceries", frameX: display.midX - 140, frameY: display.midY - 180, frameW: 280, frameH: 360,
+                        dockEdge: target.edge)
+        try await db.insert(note)
+        let manager = NoteWindowManager(appDatabase: db)
+        return (manager, manager.openNote(note, makeKey: false), note, db)
+    }
+
+    @Test("a quick edit: the open note's quick-add has the keyboard, and the note goes back once the pointer leaves, not while something's typed")
+    func quickEdit() async throws {
+        _ = NSApplication.shared
+        guard let target = outerEdge() else { return }
+        let (manager, panel, note, _) = try await openDocked(target)
+        defer { panel.close() }
+        var pointer = NSPoint(x: panel.frame.midX, y: panel.frame.midY)   // on the tab: a click opens it
+        manager.pointerLocation = { pointer }
+        manager.openNote(note)
+        try await waitFor { panel.frame.width == 280 && panel.alphaValue == 1 && panel.firstResponder is EditorTextView }
+        let editor = try #require(panel.firstResponder as? EditorTextView)
+        pointer = NSPoint(x: panel.frame.midX, y: panel.frame.midY)
+        try await Task.sleep(for: .milliseconds(300))
+        editor.string = "Olive oil"   // typed, not added yet
+        pointer = NSPoint(x: target.display.visible.midX, y: target.display.visible.midY)
+        try await Task.sleep(for: .milliseconds(1500))
+        #expect(panel.frame.width == 280)   // it waits for Return (or Esc)
+        editor.string = ""                  // Return added it
+        try await waitFor { panel.frame.width == DockLayout.sliverWidth }
+    }
+
+    @Test("opened from the menu bar, a docked note waits for the pointer to come over before it can go back by itself")
+    func openedFromMenuWaitsForPointer() async throws {
+        _ = NSApplication.shared
+        guard let target = outerEdge() else { return }
+        let (manager, panel, note, _) = try await openDocked(target)
+        defer { panel.close() }
+        var pointer = NSPoint(x: target.display.visible.midX, y: target.display.visible.maxY - 2)   // up at the menu bar
+        manager.pointerLocation = { pointer }
+        manager.openNote(note)
+        try await waitFor { panel.frame.width == 280 }
+        try await Task.sleep(for: .milliseconds(1500))
+        #expect(panel.frame.width == 280)
+        pointer = NSPoint(x: panel.frame.midX, y: panel.frame.midY)
+        try await Task.sleep(for: .milliseconds(300))
+        pointer = NSPoint(x: target.display.visible.midX, y: target.display.visible.midY)
+        try await waitFor { panel.frame.width == DockLayout.sliverWidth }
+    }
+
+    @Test("Esc in the open note's empty quick-add puts it back into the dock")
+    func escapePutsBack() async throws {
+        _ = NSApplication.shared
+        guard let target = outerEdge() else { return }
+        let (manager, panel, note, _) = try await openDocked(target)
+        defer { panel.close() }
+        let onTab = NSPoint(x: panel.frame.midX, y: panel.frame.midY)
+        manager.pointerLocation = { onTab }   // stays on the note: only Esc can put it back
+        manager.openNote(note)
+        try await waitFor { panel.frame.width == 280 && panel.firstResponder is EditorTextView }
+        let esc = try #require(NSEvent.keyEvent(
+            with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: panel.windowNumber,
+            context: nil, characters: "\u{1b}", charactersIgnoringModifiers: "\u{1b}", isARepeat: false, keyCode: 53
+        ))
+        panel.sendEvent(esc)
+        try await waitFor { panel.frame.width == DockLayout.sliverWidth }
+    }
+
+    @Test("the open note's dock button undocks it, sliding 40pt in from the edge at full size")
+    func undockButton() async throws {
+        _ = NSApplication.shared
+        guard let target = outerEdge() else { return }
+        let (manager, panel, note, db) = try await openDocked(target)
+        defer { panel.close() }
+        let onTab = NSPoint(x: panel.frame.midX, y: panel.frame.midY)
+        manager.pointerLocation = { onTab }
+        manager.openNote(note)
+        try await waitFor { panel.frame.width == 280 && panel.alphaValue == 1 }
+        try await Task.sleep(for: .milliseconds(300))   // the opening slide is done
+        let open = panel.frame
+        manager.controllers[note.id]?.onToggleDock?()
+        try await waitFor { panel.frame == open.offsetBy(dx: target.edge == .left ? 40 : -40, dy: 0) }
+        #expect(panel.alphaValue == 1 && panel.styleMask.contains(.titled))
+        try await waitFor { try await db.note(id: note.id)?.dockEdge == nil }
+    }
+
+    @Test("Undock from the tab's menu unfolds the note unseen and slides it out, without opening it first")
+    func undockFromTab() async throws {
+        _ = NSApplication.shared
+        guard let target = outerEdge() else { return }
+        let (manager, panel, note, db) = try await openDocked(target)
+        defer { panel.close() }
+        manager.controllers[note.id]?.onToggleDock?()
+        try await waitFor { panel.frame.width == 280 && panel.alphaValue == 1 }
+        let visible = target.display.visible
+        try await waitFor { target.edge == .left ? panel.frame.minX == visible.minX + 40 : panel.frame.maxX == visible.maxX - 40 }
+        try await waitFor { try await db.note(id: note.id)?.dockEdge == nil }
+    }
+
     private func waitFor(_ condition: @escaping () async throws -> Bool, timeout: Duration = .seconds(10)) async throws {
         let deadline = ContinuousClock.now.advanced(by: timeout)
         while ContinuousClock.now < deadline {

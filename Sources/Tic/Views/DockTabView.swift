@@ -35,8 +35,18 @@ struct DockTabView: View {
         }
         .background(shape.fill(theme.fill))
         .overlay(shape.stroke(Color.black.opacity(0.14), lineWidth: 0.5))
-        // On top, so every press reaches it: a click opens the note, a drag moves the tab or pulls the note off.
-        .overlay(WindowMoveArea(onClick: { controller.onTabClick?() }))
+        // On top, so every press reaches it: a click opens the note, a drag moves the tab or pulls the note off, and a
+        // right-click offers the same without opening it first.
+        .overlay(WindowMoveArea(onClick: { controller.onTabClick?() }, contextMenu: menu))
+    }
+
+    private func menu() -> NSMenu {
+        let menu = NSMenu()
+        menu.addItem(ClosureMenuItem("Open") { controller.onTabClick?() })
+        menu.addItem(ClosureMenuItem("Undock") { controller.onToggleDock?() })
+        menu.addItem(.separator())
+        menu.addItem(ClosureMenuItem("Close List") { controller.requestClose() })
+        return menu
     }
 
     @ViewBuilder private var count: some View {

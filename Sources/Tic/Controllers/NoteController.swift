@@ -63,8 +63,10 @@ final class NoteController {
     @ObservationIgnored var onPointerInside: ((Bool) -> Void)?
     /// A click on the tab: open the note.
     @ObservationIgnored var onTabClick: (() -> Void)?
-    /// ⋯ › Dock to Edge / Undock.
+    /// ⋯ › Dock to Edge / Undock, the open note's dock button, the tab's Undock.
     @ObservationIgnored var onToggleDock: (() -> Void)?
+    /// The open note's →|: back into its tab.
+    @ObservationIgnored var onPutBack: (() -> Void)?
 
     init(note: Note, database: AppDatabase) {
         self.noteID = note.id
