@@ -2,6 +2,12 @@
 
 All notable changes to Tic are documented here.
 
+## [0.12.0] - 2026-11-24
+
+### Features
+
+- *(notes)* Dock lists to a screen edge, private lists, list icons, and pins over full-screen apps (#25)
+
 ## [0.11.1] - 2026-11-08
 
 ### Bug Fixes
