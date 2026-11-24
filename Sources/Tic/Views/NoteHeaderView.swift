@@ -18,7 +18,10 @@ struct NoteHeaderView: View {
     @Binding var isRenaming: Bool
 
     @State private var showOptions = false
+    @State private var showIconPicker = false
     @State private var showClearConfirm = false
+    /// Emoji picked lately, shared by every list's picker (`NoteIcon.recentEmoji`).
+    @AppStorage("recentEmoji") private var recentEmoji = ""
     /// Bumped to flash the sync mark (a cycle touched this list, or Sync Now was pressed).
     @State private var syncPulse = 0
     @State private var showsSyncMark = false
@@ -39,10 +42,20 @@ struct NoteHeaderView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
-                titleField
+                if controller.isCovered {
+                    coveredTitle
+                } else {
+                    HStack(spacing: 6) {
+                        if let icon = NoteIcon(stored: note.icon) {
+                            NoteIconView(icon: icon, ink: theme.title).font(.headline)
+                        }
+                        titleField
+                    }
+                }
+                privateMark
                 syncMark
                 Spacer(minLength: 0)
-                if isRolledUp { remainingCount }
+                if isRolledUp && !controller.isCovered { remainingCount }
                 if showsControls { controls.transition(.opacity) }
             }
             .frame(height: NoteLayout.collapsedHeight)   // the rolled-up bar is exactly this row
@@ -56,7 +69,8 @@ struct NoteHeaderView: View {
         }
         .padding(.horizontal, 16)
         // The header is the window's drag handle; double-clicking its chrome rolls the note up or down.
-        .background(WindowMoveArea { controller.toggleCollapsed() })
+        // Docked, the note always peeks at full size, so there's no rolling up.
+        .background(WindowMoveArea { if !controller.isDocked { controller.toggleCollapsed() } })
         .help(isRolledUp ? "Drag to move · double-click to expand" : "")
         .task(id: controller.renameRequest) {   // also runs on appear, for a list that opens renaming
             if controller.renameRequest > 0, !isRolledUp { isRenaming = true }
@@ -68,6 +82,24 @@ struct NoteHeaderView: View {
             try? await Task.sleep(for: .seconds(1.6))
             while sync?.isSyncing == true, !Task.isCancelled { try? await Task.sleep(for: .milliseconds(200)) }
             if !Task.isCancelled { withAnimation(.easeIn(duration: 0.4)) { showsSyncMark = false } }
+        }
+    }
+
+    /// A covered private list shows no name (nor icon, nor count) while the screen is shared.
+    private var coveredTitle: some View {
+        Text("Private")
+            .font(.headline.weight(.semibold))
+            .foregroundStyle(theme.secondary)
+            .padding(.leading, 2)
+    }
+
+    /// A dim lock after a private list's title, so you can check before you share.
+    @ViewBuilder private var privateMark: some View {
+        if controller.isPrivate {
+            Image(systemName: "lock.fill")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(theme.secondary)
+                .help("Private: kept out of screen shares")
         }
     }
 
@@ -152,8 +184,14 @@ struct NoteHeaderView: View {
     private var controls: some View {
         HStack(spacing: 6) {
             if !isRolledUp { optionsButton }
-            collapseButton
-            floatButton
+            if controller.isDocked {
+                // Open out of its tab (a docked note shows no header otherwise). Roll-up and the pin do nothing here.
+                backToDockButton
+                dockButton
+            } else {
+                collapseButton
+                floatButton
+            }
             closeButton
         }
         .confirmationDialog(
@@ -181,12 +219,28 @@ struct NoteHeaderView: View {
         }
     }
 
+    private var backToDockButton: some View {
+        iconButton(systemName: controller.tabEdge == .left ? "arrow.left.to.line" : "arrow.right.to.line",
+                   isActive: false, help: "Back to dock (Esc)") {
+            controller.onPutBack?()
+        }
+    }
+
+    /// Lit while docked, as the pin is while pinned: a click takes the list out of the dock.
+    private var dockButton: some View {
+        iconButton(systemName: controller.tabEdge == .left ? "sidebar.left" : "sidebar.right",
+                   isActive: true, help: "Docked. Click to undock") {
+            controller.onToggleDock?()
+        }
+    }
+
     private var floatButton: some View {
         let isFloating = note.floatOnTop
         return iconButton(
             systemName: isFloating ? "pin.fill" : "pin",
             isActive: isFloating,
-            help: isFloating ? "Unpin from top" : "Keep on top"
+            help: !isFloating ? "Keep on top"
+                : note.showOnAllSpaces ? "Kept on top everywhere. Click to unpin" : "Unpin from top"
         ) {
             controller.toggleFloatOnTop()
         }
@@ -239,6 +293,7 @@ extension NoteHeaderView {
             popoverAction("Rename…", systemImage: "pencil") { controller.requestRename() }
             Divider()
             colorSwatches
+            iconRow
             VStack(alignment: .leading, spacing: 10) {
                 optionSwitch("Glass", systemImage: "drop", isOn: Binding(
                     get: { note.material == .glass },
@@ -252,6 +307,20 @@ extension NoteHeaderView {
                     get: { note.moveCompletedToBottom },
                     set: { _ in controller.toggleMoveCompletedToBottom() }
                 ))
+                // Only for a pinned list: all Spaces applies only while pinned (`NotePanel.apply`).
+                if note.floatOnTop {
+                    optionSwitch("Over full-screen apps", systemImage: "arrow.up.left.and.arrow.down.right", isOn: Binding(
+                        get: { note.showOnAllSpaces },
+                        set: { _ in controller.toggleShowOnAllSpaces() }
+                    ))
+                    .help("Also stays on every desktop")
+                }
+                optionSwitch("Private", systemImage: "lock", isOn: Binding(
+                    get: { controller.isPrivate },
+                    set: { _ in controller.togglePrivate() }
+                ))
+                .disabled(controller.everyListPrivate)   // Settings makes every list private
+                .help(controller.everyListPrivate ? "Every list is private (Settings › General)" : "Kept out of screen shares")
                 // Only once sync is on in Settings › Sync; until then there's nothing to switch.
                 if sync?.isEnabled == true {
                     optionSwitch("Sync", systemImage: "arrow.triangle.2.circlepath", experimental: true, isOn: Binding(
@@ -269,6 +338,10 @@ extension NoteHeaderView {
 
             VStack(alignment: .leading, spacing: 8) {
                 popoverAction("New List", systemImage: "plus") { controller.requestNewNote() }
+                popoverAction(controller.isDocked ? "Undock" : "Dock to Edge",
+                              systemImage: controller.isDocked ? "rectangle.portrait.and.arrow.right" : "sidebar.right") {
+                    controller.onToggleDock?()
+                }
                 // A "tidy up" wand rather than a trash can — this clears finished items, it isn't a delete.
                 let done = controller.completedCount
                 popoverAction(done > 0 ? "Clean Up \(done) Completed…" : "Clean Up Completed…",
@@ -309,6 +382,37 @@ extension NoteHeaderView {
             Spacer(minLength: 0)
             Toggle(title, isOn: isOn).labelsHidden()
         }
+    }
+
+    /// One quiet row: the list's icon (or None), opening the picker beside the menu.
+    private var iconRow: some View {
+        Button { showIconPicker.toggle() } label: {
+            HStack(spacing: 12) {
+                optionLabel("Icon", systemImage: "face.smiling")
+                Spacer(minLength: 0)
+                if let icon = NoteIcon(stored: note.icon) {
+                    NoteIconView(icon: icon, ink: .primary)
+                } else {
+                    Text("None").foregroundStyle(.secondary)
+                }
+                Image(systemName: "chevron.right")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .popover(isPresented: $showIconPicker, arrowEdge: .trailing) {
+            IconPicker(current: NoteIcon(stored: note.icon), recent: recentEmoji) { icon in
+                pickIcon(icon)
+                showIconPicker = false
+            }
+        }
+    }
+
+    private func pickIcon(_ icon: NoteIcon?) {
+        controller.setIcon(icon)
+        if case .emoji(let emoji) = icon { recentEmoji = NoteIcon.recentEmoji(recentEmoji, adding: emoji) }
     }
 
     private var colorSwatches: some View {

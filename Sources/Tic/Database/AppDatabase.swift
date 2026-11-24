@@ -139,6 +139,19 @@ final class AppDatabase: Sendable {
                 """)
         }
 
+        migrator.registerMigration("v7_note_icon_private") { db in
+            try db.alter(table: "note") { t in
+                t.add(column: "icon", .text)
+                t.add(column: "isPrivate", .boolean).notNull().defaults(to: false)
+            }
+        }
+
+        migrator.registerMigration("v8_note_dock") { db in
+            try db.alter(table: "note") { t in
+                t.add(column: "dockEdge", .text)
+            }
+        }
+
         return migrator
     }
 
@@ -254,6 +267,28 @@ final class AppDatabase: Sendable {
     func updateNoteSynced(id: UUID, isSynced: Bool) async throws {
         try await dbQueue.write { db in
             try db.execute(sql: "UPDATE note SET isSynced = ? WHERE id = ?", arguments: [isSynced, id])
+        }
+    }
+
+    /// Targeted write of the edge a note is docked to (nil: undocked). Per Mac, never synced.
+    func updateNoteDock(id: UUID, edge: DockEdge?) async throws {
+        try await dbQueue.write { db in
+            try db.execute(sql: "UPDATE note SET dockEdge = ? WHERE id = ?", arguments: [edge?.rawValue, id])
+        }
+    }
+
+    /// Targeted write of a note's icon (`NoteIcon.stored`, nil for none).
+    func updateNoteIcon(id: UUID, icon: String?) async throws {
+        try await dbQueue.write { db in
+            try db.execute(sql: "UPDATE note SET icon = ?, updatedAt = ? WHERE id = ?", arguments: [icon, Date(), id])
+        }
+    }
+
+    /// Targeted write of whether a list is private (kept out of screen shares).
+    func updateNotePrivate(id: UUID, isPrivate: Bool) async throws {
+        try await dbQueue.write { db in
+            try db.execute(sql: "UPDATE note SET isPrivate = ?, updatedAt = ? WHERE id = ?",
+                           arguments: [isPrivate, Date(), id])
         }
     }
 

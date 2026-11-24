@@ -4,7 +4,7 @@ import SwiftUI
 /// Shared layout constants so the SwiftUI collapsed bar and the AppKit window resize agree.
 enum NoteLayout {
     /// Height of a rolled-up note — exactly its header's top row (a capsule it draws itself — see
-    /// `NotePanel.setRolledUp`).
+    /// `NotePanel.setFrameless`).
     static let collapsedHeight: CGFloat = 34
     /// The shortest an open note can be resized to (`NoteWindowManager.windowWillResize`).
     static let minExpandedHeight: CGFloat = 160
@@ -43,6 +43,9 @@ struct NoteView: View {
     @State private var titleText: String
     @State private var revealed = false
     @State private var atBarHeight = false
+    /// The window is a tab's width: docked (or being dragged into an edge). Decided by size alone, as the bar
+    /// is, so the manager just resizes the window.
+    @State private var atTabWidth = false
     @State private var drag: ReorderDrag
     // True while a reorder gesture is live. SwiftUI resets it when the gesture ends *or is cancelled*;
     // a cancel never reaches `onEnded`, so this is what puts the task back instead of leaving it lifted.
@@ -84,6 +87,25 @@ struct NoteView: View {
     }
 
     var body: some View {
+        Group {
+            if atTabWidth {
+                DockTabView(controller: controller, theme: NoteTheme(color: note.color, surface: .solid))
+            } else {
+                noteBody
+            }
+        }
+        .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+        .onGeometryChange(for: Bool.self) { $0.size.width <= DockLayout.maxTabWidth + 0.5 } action: {
+            atTabWidth = $0
+        }
+        .background(HoverArea { hovering in
+            withAnimation(.easeInOut(duration: 0.15)) { revealed = hovering }
+            controller.onPointerInside?(hovering)
+        })
+        .ignoresSafeArea()
+    }
+
+    private var noteBody: some View {
         VStack(alignment: .leading, spacing: 0) {
             NoteHeaderView(
                 controller: controller,
@@ -96,8 +118,12 @@ struct NoteView: View {
             // Rolled up, the header's top row is all that's left: the window closes over the rest like a
             // shade, and the list leaves only once it's shut, so nothing moves and nothing hidden keeps focus.
             if !showsBar {
-                taskList
-                QuickAddBar(controller: controller, theme: theme)
+                if controller.isCovered {
+                    PrivateCover(theme: theme)
+                } else {
+                    taskList
+                    QuickAddBar(controller: controller, theme: theme)
+                }
             }
         }
         // `minHeight: 0`: part-way through a roll the window is shorter than the list's ~150pt minimum, and the
@@ -108,16 +134,12 @@ struct NoteView: View {
         }
         .background(NoteBackground(
             color: note.color, material: note.material,
-            cornerRadius: note.isCollapsed ? NoteLayout.collapsedHeight / 2 : 0
+            cornerRadius: note.isCollapsed && !controller.isDocked ? NoteLayout.collapsedHeight / 2 : 0
         ))
-        .background(HoverArea { hovering in
-            withAnimation(.easeInOut(duration: 0.15)) { revealed = hovering }
-        })
-        .ignoresSafeArea()
     }
 
-    /// Rolled up and done rolling: the window is down to the bar.
-    private var showsBar: Bool { note.isCollapsed && atBarHeight }
+    /// Rolled up and done rolling: the window is down to the bar. (A docked note peeks at full size.)
+    private var showsBar: Bool { note.isCollapsed && atBarHeight && !controller.isDocked }
 
     // MARK: - Task list
 
@@ -500,5 +522,25 @@ private struct AddSubtaskRow: View {
         }
         .help("Add a subtask")
         .transition(.opacity)
+    }
+}
+
+/// What a private list shows while it's covered: no tasks, just why.
+private struct PrivateCover: View {
+    let theme: NoteTheme
+
+    var body: some View {
+        VStack(spacing: 6) {
+            Image(systemName: "lock.fill").font(.title2)
+            Text("Covered while you share")
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(theme.title)
+            Text("Turn off Cover Private Lists in the menu bar to show it.")
+                .font(.caption)
+        }
+        .foregroundStyle(theme.secondary)
+        .multilineTextAlignment(.center)
+        .padding(16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

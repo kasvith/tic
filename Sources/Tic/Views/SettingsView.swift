@@ -59,6 +59,21 @@ private struct GeneralSettings: View {
                     Text("Open Tic and its notes when you log in.")
                 }
             }
+            Section("Docked tabs") {
+                Picker("On hover, tabs show", selection: Binding(get: { model.dockTabStyle }, set: { model.setDockTabStyle($0) })) {
+                    ForEach(DockTabStyle.allCases) { Text($0.label).tag($0) }
+                }
+                Toggle(isOn: Binding(get: { model.tabsOverFullScreen }, set: { model.setTabsOverFullScreen($0) })) {
+                    Text("Show tabs over full-screen apps")
+                    Text("Docked tabs also appear on every desktop and over apps in full screen.")
+                }
+            }
+            Section("Privacy") {
+                Toggle(isOn: Binding(get: { model.everyListPrivate }, set: { model.setEveryListPrivate($0) })) {
+                    Text("Treat every list as private")
+                    Text("Keep every list out of screen shares where macOS allows, and cover it with Cover Private Lists.")
+                }
+            }
             Section("About") {
                 LabeledContent("Version", value: updates.currentVersion ?? "Development build")
                 Picker("Check for updates", selection: Binding(
@@ -80,7 +95,7 @@ private struct GeneralSettings: View {
             }
         }
         .formStyle(.grouped)
-        .frame(height: 270)
+        .frame(height: 470)
     }
 
     private var updateStatus: String {

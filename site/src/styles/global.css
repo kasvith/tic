@@ -122,6 +122,82 @@ p.headline-line .tick { width: 1.15em; height: 1.15em; margin: 0; color: var(--a
 @media (width < 40rem) { h1.headline-line .tick { width: 0.72em; height: 0.72em; margin-top: 0.1em; } }
 @media (hover: none) { .note-ctl { display: flex; } }
 
+/* A list's icon before its title (emoji in colour, symbols in the title's ink), the private lock, and the plain
+   cover a private list shows while private lists are covered (menu bar › Cover Private Lists). */
+.note-icon { flex: none; display: grid; place-items: center; margin-right: -0.25em; font-size: 1.08em; line-height: 1; color: var(--title); }
+.note-icon svg { width: 1.05em; height: 1.05em; }
+.note-lock { flex: none; display: grid; margin: 0 auto 0 -0.35em; color: var(--secondary); opacity: 0.7; }
+.note[data-private] .note-title, .note[data-covered] .note-private-title { flex: 0 1 auto; }
+.note-lock svg { width: 0.8em; height: 0.8em; }
+.note-private-title, .note-cover { display: none; }
+.note[data-covered] :is(.note-icon, .note-title, .note-list, .quick) { display: none; }
+.note[data-covered] .note-private-title { display: block; font-weight: 600; color: var(--title); }
+.note[data-covered] .note-cover {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.25em; min-height: 9.5em;
+  color: var(--secondary); text-align: center;
+  background: repeating-linear-gradient(135deg, transparent 0 0.6em, color-mix(in srgb, var(--accent) 13%, transparent) 0.6em 1.2em);
+}
+.note-cover svg { width: 1.3em; height: 1.3em; }
+.note-cover strong { color: var(--title); }
+.note-cover span { font-size: 0.85em; }
+
+/* ── Edge dock demo: a sliver at the desktop's edge slides out into a tab on hover; a click opens the list,
+      sliding out of the edge as it fades in (closing slides back, a little quicker), as Tic does. ── */
+/* Demo scenes scale with their panel: em off the container's width, a note's own 13px left out. */
+.demo-scene { container-type: inline-size; }
+.demo-scale { font-size: clamp(8px, 2.6cqw, 13px); }
+.demo-scale .note { font-size: inherit; }
+.dock-desk { position: relative; aspect-ratio: 16 / 10; overflow: hidden; border-radius: 1em; background: var(--wallpaper); box-shadow: 0 0 0 1px rgb(0 0 0 / 0.08); }
+.dock-app { position: absolute; left: 7%; top: 9%; width: 62%; height: 82%; overflow: hidden; border-radius: 0.8em; background: #fbfbfc; box-shadow: 0 1.2em 2.6em rgb(0 0 0 / 0.25), 0 0 0 0.5px rgb(0 0 0 / 0.2); }
+.dock-app-bar { display: flex; align-items: center; gap: 0.5em; height: 2.3em; padding: 0 0.9em; background: #ececef; border-bottom: 1px solid #dcdce0; font: 600 0.9em var(--sys); color: #3a3a3c; }
+.dock-app-bar i { width: 0.85em; height: 0.85em; border-radius: 50%; background: #c8c8cc; }
+.dock-app-row { display: grid; gap: 0.45em; padding: 0.85em 1.1em; border-bottom: 1px solid #ececef; }
+.dock-app-row i { display: block; height: 0.6em; border-radius: 0.3em; background: #e1e1e6; }
+.dock-app-row i:first-child { width: 45%; background: #c9c9cf; }
+.note.dock-tab {
+  position: absolute; right: 0; top: 16%; z-index: 2; width: 0.55em; height: 9.5em; padding: 0; border: 0; border-radius: 0.6em 0 0 0.6em;
+  cursor: pointer; overflow: hidden;
+  box-shadow: 0 0 0 0.5px rgb(0 0 0 / 0.25);
+  transition: width 0.22s cubic-bezier(0.34, 1.3, 0.64, 1), box-shadow 0.2s, opacity 0.12s;
+}
+.note.dock-tab:hover, .note.dock-tab:focus-visible { width: 2em; box-shadow: -0.3em 0.25em 0.9em rgb(0 0 0 / 0.28), 0 0 0 0.5px rgb(0 0 0 / 0.25); }
+.dock-tab-in { position: absolute; inset: 0 auto 0 0; width: 2em; display: flex; flex-direction: column; align-items: center; gap: 0.4em; padding: 0.7em 0; opacity: 0; transition: opacity 0.15s; }
+.dock-tab:hover .dock-tab-in, .dock-tab:focus-visible .dock-tab-in { opacity: 1; }
+.dock-tab .count { font: 700 0.75em/1.6em var(--sys); min-width: 1.6em; padding: 0 0.3em; border-radius: 99px; color: #fff; background: var(--accent); }
+.dock-tab-title { writing-mode: vertical-rl; font-weight: 600; color: var(--title); white-space: nowrap; }
+.dock-peek {
+  position: absolute; right: 0; top: 12%; z-index: 3; opacity: 0; pointer-events: none; transform: translateX(1.4em);
+  transition: opacity 0.14s ease-in, transform 0.16s ease-in;
+}
+.dock-peek .note { border-radius: 0.95em 0 0 0.95em; }
+[data-open] > .dock-desk .dock-peek {
+  opacity: 1; pointer-events: auto; transform: none;
+  transition: opacity 0.18s ease-out, transform 0.26s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+[data-open] > .dock-desk .dock-tab { opacity: 0; pointer-events: none; }
+@media (hover: none) { .note.dock-tab { width: 2em; } .dock-tab-in { opacity: 1; } }
+
+/* ── Icons demo: the picker's grid; Symbols draw like the app's, in plain ink here and the note's ink once picked. ── */
+.icon-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 0.25rem; }
+.icon-grid button { display: grid; place-items: center; aspect-ratio: 1; border-radius: 0.45rem; font-size: 1.15rem; line-height: 1; color: rgb(0 0 0 / 0.75); }
+.icon-grid button:hover { background: rgb(0 0 0 / 0.06); }
+.icon-grid button[aria-pressed="true"] { background: rgb(0 0 0 / 0.08); box-shadow: inset 0 0 0 1.5px var(--accent); }
+.icon-grid svg { width: 1.1rem; height: 1.1rem; }
+#icon-picker:not([data-kind="symbols"]) .symbol-grid, #icon-picker[data-kind="symbols"] .emoji-grid { display: none; }
+
+/* ── Full-screen demo: a pinned list over an app in full screen, with ⋯ › Over full-screen apps. ── */
+.fs-app { position: relative; aspect-ratio: 16 / 10; overflow: hidden; border-radius: 1em; display: grid; grid-template-columns: 18% 1fr; background: #1f2126; }
+.fs-thumbs { display: flex; flex-direction: column; gap: 0.8em; padding: 1.2em 1em; background: #25272c; }
+.fs-thumbs i { display: block; aspect-ratio: 16 / 10; border-radius: 0.3em; background: #3a3d44; }
+.fs-thumbs i:first-child { outline: 0.15em solid #e0a83a; }
+.fs-slide { align-self: center; margin: 0 8% 0 6%; aspect-ratio: 16 / 9; border-radius: 0.3em; padding: 7% 8%; background: #fafafa; color: #1d1d1f; box-shadow: 0 0.8em 2em rgb(0 0 0 / 0.4); }
+.fs-slide b { display: block; font: 800 1.7em/1.05 var(--font-display, var(--sys)); letter-spacing: -0.02em; }
+.fs-slide i { display: block; height: 0.7em; margin-top: 0.9em; border-radius: 0.35em; background: #e6e6ea; }
+.fs-pinned { position: absolute; right: 3%; top: 5%; transition: opacity 0.2s, transform 0.2s; }
+[data-over="off"] .fs-pinned { opacity: 0; transform: scale(0.96); }
+.fs-gone { position: absolute; right: 3%; top: 5%; padding: 0.5em 0.8em; border-radius: 0.6em; font-size: 0.9em; color: rgb(255 255 255 / 0.55); border: 1px dashed rgb(255 255 255 / 0.25); opacity: 0; transition: opacity 0.2s; }
+[data-over="off"] .fs-gone { opacity: 1; }
+
 /* ── AI agents section: looping chat + live-fill demo ─────────────────────── */
 /* Elements transition both ways so a JS timeline can loop them. The `.js` class (set early) gates
    the hidden start state, so without JS everything shows; reduced motion opts out via the media. */

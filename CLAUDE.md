@@ -28,6 +28,10 @@ open Package.swift          # opens the package in Xcode for GUI editing / previ
 - **Verification** is a clean `swift build`, `swift test` (Swift Testing — `AppDatabaseTests`, `SyncTests`,
   `TaskOutlineTests`, `NoteColorTests`, `TaskImageTests`, …), plus running the app. The outline logic lives in pure,
   testable functions (`TaskOutline`) precisely so it can be covered without a DB or the main actor.
+  Tests share the Mac with its user, so they must never take the real keyboard or mouse: nothing runs the app
+  under `swift test` (`NSApp.isRunning` is false), and there a `NotePanel` ignores the pointer and never becomes
+  key (a key non-activating panel takes whatever the user types). Probe scripts follow suit: no window ordered
+  front, no posted or warped events.
 - `swift run` produces a bare executable (no bundle): fine for dev, but it has no Dock identity
   and **can't register as a login item** (SMAppService needs a real bundle).
 - **Packaging** (`scripts/package.sh` + `Packaging/Info.plist`) assembles a real `dist/Tic.app`
@@ -75,7 +79,11 @@ panels**, and a few responsibilities are deliberately split across the AppKit/Sw
   each panel's `NSWindowDelegate`, and is the single chokepoint for all window mutation:
   `restoreAll` (launch: only notes with `isOpen` — the header X clears it, quitting doesn't, so
   relaunch shows what was on screen), `openNote`, close, debounced frame persistence, roll-up
-  resize, and applying float-on-top / show-on-all-Spaces. Frames are global coordinates spanning
+  resize, and applying float-on-top / show-on-all-Spaces (all Spaces counts only while pinned: ⋯ ›
+  Over full-screen apps). No collection behaviour moves a window off a Space once it's there, so a note
+  let go of all Spaces over a full-screen app is hidden until its display shows a desktop again
+  (`applyBehavior` / `activeSpaceDidChange`). `SkyLight.isFullScreen` tells which, using the private
+  space-type call window managers use, looked up at run time; if a macOS drops it, notes simply stay put. Frames are global coordinates spanning
   all displays, exactly as Stickies stores them. **Only user drags/resizes persist a frame**: `place`
   puts a note at its saved frame when any connected display shows it, else parks it at the nearest
   edge of the main display, and re-runs on `didChangeScreenParametersNotification` with saves
@@ -145,7 +153,54 @@ panels**, and a few responsibilities are deliberately split across the AppKit/Sw
   DB and its device id in the `syncDeviceID` default (issued once, so a lost state file never leaves a
   ghost Mac in the folder), refuses to recreate a folder whose parent vanished (an unmounted Dropbox reads as "can't
   reach"), and skips files with a newer `schema` — bump it when the format changes **or `NoteColor` /
-  `NoteMaterial` gains a case**. Off by default (`syncEnabled` default).
+  `NoteMaterial` gains a case**. A field added as an *optional* register (`SyncNote.icon`, `isPrivate`)
+  needs no bump: older files still decode and older Macs ignore it. Off by default (`syncEnabled` default).
+- **Edge dock (`DockLayout`, pure + `NoteWindowManager` › Edge dock)** — drag a note's header to the left or
+  right edge of any display (between two displays too: a note dragged across folds for a moment and docks
+  only if let go there) and it folds into a tab; `note.dockEdge` is per Mac (not synced), and while docked
+  the saved frame is where it **peeks**. Tab and peek are the same panel: `NoteView` draws `DockTabView`
+  whenever the window is ≤ `DockLayout.maxTabWidth` wide (a note is never that narrow), as it draws the bar
+  by height, so the manager only sets frames. `NotePanel.performDrag` asks `onDragMove` for each step's frame.
+  A **click** on the tab opens the note (no hover: users found it jumpy) with its quick-add taking the keyboard
+  (`autoFocus` while docked: the list is built afresh each time it opens). It goes back on a click elsewhere (resign
+  key), Esc (`NotePanel.cancelOperation`; an empty editor passes Esc on), the header's →|, or by itself a second after
+  the pointer has left it (`watchPointer`: only once the pointer has been on it, counted at the click that opened it;
+  never with typed text not yet in, nor while `isInUse`: a drag or resize, its popover or a sheet, its picture, a menu
+  via `menusOpen`; the second is timed by the clock, since on a busy main thread the 100 ms checks come late). A click
+  elsewhere (`scheduleRetract`) also waits while it's in use: ⋯ › Icon › All emoji…'s viewer takes the keyboard. Going back while key
+  hands the keyboard back to the app you were in (a brief `orderOut`), or the tab kept taking your typing. Open, its
+  header shows →| and a lit dock button (Undock) instead of roll-up and the pin; Undock (that button, ⋯, the tab's
+  right-click menu) slides it 40pt in from the edge. Opening slides the window 18pt out of its edge as it fades in, and
+  closing slides it back (no slide with Reduce Motion): only the origin animates, never the size, since growing the
+  window from tab to note re-laid out the whole list every frame and lagged. The list lays out synchronously at alpha 0
+  first (probed: about 34 ms). A docked note
+  **rests as a 6pt sliver** (`DockLayout.restFrame`) on top of every window, so nothing can hide it; hovering
+  springs the window out to the full tab (`tabHover` / `slideTab`, cheap since a tab lays out almost nothing),
+  whose content fades in with its width. It goes back only once `pointerLocation` has really been off the tab
+  for ~0.1 s: following the tracking area's "left" made a hovered tab flash in and out (most likely spurious leaves
+  while its window resized under a still pointer; not confirmed). (An earlier design kept tabs under windows and watched the pointer
+  with a global `mouseMoved` monitor; in tests installing that stalled the main thread. Gone with the sliver.)
+  **A plain `setFrame` doesn't stop a running frame animation** (probed: the animation wins), so frames set
+  over a possible slide go through `setFrameNow` (a zero-length animation replaces it), and `performDrag`
+  starts the same way; a plain drag only moves (`setFrameOrigin`), resizing just to fold or unfold. A tab's height is
+  whole points (`tabSize`): AppKit rounds a window's size (asked 87.3, got 88), so a fractional one never matched and
+  every step of a drag along the edge resized and redrew the tab. A docked
+  note's saved frame changes only on a user live-resize while it's open.
+  The manager keeps its own `dockEdges`: the controller's `note` can hold a stale observed row, so
+  `setDockEdge` always writes (skipping "unchanged" once left a note docked in the DB after undocking).
+  Settings › General › Docked tabs: what a hovered tab shows (`dockTabStyle`) and Show tabs over full-screen apps.
+- **List icons (`NoteIcon`, pure)** — `note.icon` holds one emoji or `symbol:<name>` from a fixed set of
+  SF Symbols every macOS 14 has (so any Mac draws what another picked; anything else reads as no icon).
+  Emoji draw in colour, symbols in the note's title ink (`NoteIconView`). ⋯ › Icon is one row opening
+  `IconPicker` (Emoji / Symbols tabs, All emoji…, Remove). All emoji… types into `EmojiCatcher`, an invisible field in the picker itself: macOS opens the
+  Character Viewer at the text cursor of what has the keyboard, so it comes up beside the menu; Tic leaves the menus open
+  (it can't be put inside them). Emoji you pick lead the Emoji grid in every list's picker (`NoteIcon.recentEmoji`, kept
+  in the `recentEmoji` default as one string of emoji).
+- **Private lists** — `note.isPrivate` (⋯ › Private), or every list via Settings › General
+  (`everyListPrivate`). A private list's panel and image window get `sharingType = .none`, which only
+  capture paths that honour it respect (ScreenCaptureKit on macOS 15.4+ is reported not to), so menu bar ›
+  Cover Private Lists (`coveringPrivate`) draws a plain cover instead (`NoteController.isCovered`). The
+  manager pushes both flags into each controller (`applyPrivacy`). A dim lock after the title marks one.
 - **Settings window (`SettingsView`)** — a SwiftUI `Settings` scene (⌘, and Tic › Settings… come
   free) with three `Form(.grouped)` tabs: General (Launch at Login, version, update frequency + Check
   Now), Sync (switch, folder, other Macs, and a switch per list), AI Agents (the MCP switch and
@@ -213,7 +268,11 @@ panels**, and a few responsibilities are deliberately split across the AppKit/Sw
   for in-app controls and won't sample the desktop behind a window.
 - **The window drags only by its header.** `isMovableByWindowBackground` is off; `WindowMoveArea`
   (an `NSViewRepresentable` calling `window.performDrag`) is placed behind the header / collapsed
-  bar. This is what lets task rows be dragged to **reorder** without moving the window. The title is
+  bar. This is what lets task rows be dragged to **reorder** without moving the window. The panel is
+  `isMovable = false`, so macOS never drags a note itself (code still moves it): its drag from the hidden title-bar
+  strip the header sits in ran alongside `performDrag`, tiled the note at a screen edge, and pulled it toward edges
+  while ours followed the pointer, so notes wiggled near edges. (A handle with `mouseDownCanMoveWindow = false` alone
+  wasn't enough.) The title is
   plain text **inside** that handle, not a click target: the header row sits in the window's hidden
   title-bar strip, where a title taking clicks let a double-click through to macOS's zoom. Renaming is
   ⋯ › Rename… (or a new list), via `NoteController.requestRename`, which swaps in a field.

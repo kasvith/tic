@@ -31,6 +31,11 @@ enum SyncMerge {
             register = Register(value: value, stamp: stamp)
             changed = true
         }
+        func set<V>(_ register: inout Register<V>?, to value: V, was old: V) {
+            guard value != old else { return }
+            register = Register(value: value, stamp: stamp)
+            changed = true
+        }
 
         for (id, n) in local.notes where s.deleted[id] == nil {
             guard var note = s.notes[id], let old = base.notes[id] else {
@@ -41,7 +46,9 @@ enum SyncMerge {
                     material: Register(value: n.material, stamp: stamp),
                     hideCompleted: Register(value: n.hideCompleted, stamp: stamp),
                     moveCompletedToBottom: Register(value: n.moveCompletedToBottom, stamp: stamp),
-                    outline: Register(value: n.outline, stamp: stamp)
+                    outline: Register(value: n.outline, stamp: stamp),
+                    icon: Register(value: n.icon, stamp: stamp),
+                    isPrivate: Register(value: n.isPrivate, stamp: stamp)
                 )
                 changed = true
                 continue
@@ -52,6 +59,8 @@ enum SyncMerge {
             set(&note.hideCompleted, to: n.hideCompleted, was: old.hideCompleted)
             set(&note.moveCompletedToBottom, to: n.moveCompletedToBottom, was: old.moveCompletedToBottom)
             set(&note.outline, to: n.outline, was: old.outline)
+            set(&note.icon, to: n.icon, was: old.icon)
+            set(&note.isPrivate, to: n.isPrivate, was: old.isPrivate)
             s.notes[id] = note
         }
         for (id, n) in local.notes where s.deleted[id] == nil && n.isSynced != s.isShared(id) {
@@ -141,7 +150,9 @@ enum SyncMerge {
             material: pick(a.material, b.material),
             hideCompleted: pick(a.hideCompleted, b.hideCompleted),
             moveCompletedToBottom: pick(a.moveCompletedToBottom, b.moveCompletedToBottom),
-            outline: mergeOutline(a.outline, b.outline)
+            outline: mergeOutline(a.outline, b.outline),
+            icon: pick(a.icon, b.icon),
+            isPrivate: pick(a.isPrivate, b.isPrivate)
         )
     }
 
@@ -154,6 +165,12 @@ enum SyncMerge {
     /// comparing the encoded values, so every Mac picks the same winner.
     static func pick<V>(_ a: Register<V>, _ b: Register<V>) -> Register<V> {
         wins(a, over: b) ? a : b
+    }
+
+    /// A field older files don't have: whichever side has it, else the newest.
+    static func pick<V>(_ a: Register<V>?, _ b: Register<V>?) -> Register<V>? {
+        guard let a, let b else { return a ?? b }
+        return pick(a, b)
     }
 
     private static func wins<V>(_ a: Register<V>, over b: Register<V>) -> Bool {
@@ -207,7 +224,9 @@ enum SyncMerge {
                 hideCompleted: n.hideCompleted.value,
                 moveCompletedToBottom: n.moveCompletedToBottom.value,
                 outline: effectiveOutline(n.outline.value, members: members[id] ?? [], tasks: out.tasks),
-                isSynced: snapshot.isShared(id)
+                isSynced: snapshot.isShared(id),
+                icon: n.icon?.value ?? nil,
+                isPrivate: n.isPrivate?.value ?? false
             )
         }
         return out
@@ -245,7 +264,8 @@ enum SyncMerge {
             if o.isSynced != n.isSynced { c.syncFlags.append(id) }
             guard n.isSynced else { continue }
             if o.title != n.title || o.color != n.color || o.material != n.material
-                || o.hideCompleted != n.hideCompleted || o.moveCompletedToBottom != n.moveCompletedToBottom {
+                || o.hideCompleted != n.hideCompleted || o.moveCompletedToBottom != n.moveCompletedToBottom
+                || o.icon != n.icon || o.isPrivate != n.isPrivate {
                 c.updatedNotes.append(id)
             }
             if o.outline != n.outline { c.outlines.append(id) }

@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import SwiftUI
 import Testing
@@ -86,16 +87,23 @@ struct NoteWindowManagerTests {
         defer { panel.close() }
 
         // Where a header drag let go (`NotePanel.performDrag` ends with `onDragEnded`).
-        func drop(atHeight y: CGFloat, dragged: Bool = true) async throws {
+        func drop(atHeight y: CGFloat, dragged: Bool = true) {
             panel.setFrameOrigin(NSPoint(x: screen.minX + 100, y: screen.minY + y))
             if dragged { panel.onDragEnded?() }
-            try await Task.sleep(for: .milliseconds(400))   // the whole glide: rounded to points, it lands early
         }
-        try await drop(atHeight: 30)   // within the snap
-        #expect(panel.frame.minY == screen.minY)
-        try await drop(atHeight: 200)
+        // The glide is a 0.22 s animation; with the whole suite running it can take a good deal longer.
+        func settles(at y: CGFloat) async throws -> Bool {
+            let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+            while panel.frame.minY != y, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(20)) }
+            return panel.frame.minY == y
+        }
+        drop(atHeight: 30)   // within the snap
+        #expect(try await settles(at: screen.minY))
+        drop(atHeight: 200)
+        try await Task.sleep(for: .milliseconds(400))   // long enough for a glide that shouldn't happen
         #expect(panel.frame.minY == screen.minY + 200)
-        try await drop(atHeight: 30, dragged: false)   // moved, not dragged by the user: left alone
+        drop(atHeight: 30, dragged: false)   // moved, not dragged by the user: left alone
+        try await Task.sleep(for: .milliseconds(400))
         #expect(panel.frame.minY == screen.minY + 30)
     }
 
@@ -147,5 +155,346 @@ struct NoteWindowManagerTests {
         // The content has no minimum height (so it can roll open from a bar): the delegate keeps one.
         let short = manager.windowWillResize(panel, to: NSSize(width: 320, height: 40))
         #expect(short.height == NoteLayout.minExpandedHeight)
+    }
+}
+
+@MainActor
+@Suite("NotePanel window behaviour")
+struct NotePanelBehaviorTests {
+    @Test("all Spaces applies only while pinned, and then it reaches full-screen apps' Spaces too")
+    func allSpacesOnlyWhilePinned() {
+        _ = NSApplication.shared
+        let panel = NotePanel(note: Note(), content: AnyView(Color.clear))
+        for (pinned, everywhere, joins) in [(false, false, false), (false, true, false), (true, false, false), (true, true, true)] {
+            panel.apply(floatOnTop: pinned, showOnAllSpaces: everywhere)
+            #expect(panel.level == (pinned ? .floating : .normal))
+            #expect(panel.collectionBehavior.contains(.canJoinAllSpaces) == joins)
+            #expect(panel.collectionBehavior.contains(.fullScreenAuxiliary))
+        }
+    }
+
+    @Test("macOS never moves a note itself, framed or not (its own drag tiled notes at a screen edge and fought ours)")
+    func macOSNeverMovesANote() {
+        _ = NSApplication.shared
+        let panel = NotePanel(note: Note(), content: AnyView(Color.clear))
+        #expect(!panel.isMovable)
+        panel.setFrameless(true)    // a tab or a rolled-up bar
+        #expect(!panel.isMovable)
+        panel.setFrameless(false)
+        #expect(!panel.isMovable)
+        let moved = panel.frame.offsetBy(dx: 30, dy: 0)
+        panel.setFrameOrigin(moved.origin)   // the note's own drag still moves it
+        #expect(panel.frame.origin == moved.origin)
+    }
+}
+
+@MainActor
+@Suite("Unpinning over a full-screen app")
+struct UnpinOverFullScreenTests {
+    @Test("a note let go of all Spaces over a full-screen app hides, and comes back once a desktop shows")
+    func hidesThenReturns() async throws {
+        _ = NSApplication.shared
+        let db = try AppDatabase.makeInMemory()
+        let note = Note(floatOnTop: true, showOnAllSpaces: true)
+        try await db.insert(note)
+        let manager = NoteWindowManager(appDatabase: db)
+        let panel = manager.openNote(note, makeKey: false)
+        defer { panel.close() }
+        var fullScreen = true
+        manager.isFullScreenSpace = { _ in fullScreen }
+
+        manager.applyBehavior(panel, floatOnTop: false, showOnAllSpaces: true)   // unpin over full screen
+        #expect(!panel.isVisible)
+        manager.activeSpaceDidChange()                                            // another full-screen app
+        #expect(!panel.isVisible)
+        fullScreen = false
+        manager.activeSpaceDidChange()                                            // a desktop
+        #expect(panel.isVisible)
+    }
+
+    @Test("on a desktop, unpinning leaves the note where it is; pinning again shows a hidden note")
+    func desktopAndRepin() async throws {
+        _ = NSApplication.shared
+        let db = try AppDatabase.makeInMemory()
+        let note = Note(floatOnTop: true, showOnAllSpaces: true)
+        try await db.insert(note)
+        let manager = NoteWindowManager(appDatabase: db)
+        let panel = manager.openNote(note, makeKey: false)
+        defer { panel.close() }
+        var fullScreen = false
+        manager.isFullScreenSpace = { _ in fullScreen }
+
+        manager.applyBehavior(panel, floatOnTop: false, showOnAllSpaces: true)   // unpin on a desktop
+        #expect(panel.isVisible)
+
+        manager.applyBehavior(panel, floatOnTop: true, showOnAllSpaces: true)
+        fullScreen = true
+        manager.applyBehavior(panel, floatOnTop: true, showOnAllSpaces: false)   // switch off over full screen
+        #expect(!panel.isVisible)
+        manager.applyBehavior(panel, floatOnTop: true, showOnAllSpaces: true)    // an agent turns it back on
+        #expect(panel.isVisible)
+    }
+}
+
+@MainActor
+@Suite("Private lists")
+struct PrivateListTests {
+    @Test("a private list's window stays out of captures, and Settings can make every list private")
+    func sharingAndCover() async throws {
+        _ = NSApplication.shared
+        let db = try AppDatabase.makeInMemory()
+        let secret = Note(title: "Salary talk", isPrivate: true)
+        let open = Note(title: "Groceries")
+        try await db.insert(secret)
+        try await db.insert(open)
+        let manager = NoteWindowManager(appDatabase: db)
+        let secretPanel = manager.openNote(secret, makeKey: false)
+        let openPanel = manager.openNote(open, makeKey: false)
+        defer { secretPanel.close(); openPanel.close() }
+
+        #expect(secretPanel.sharingType == .none)
+        #expect(openPanel.sharingType == .readOnly)
+
+        manager.everyListPrivate = true
+        #expect(openPanel.sharingType == .none)
+        manager.everyListPrivate = false
+        #expect(openPanel.sharingType == .readOnly)
+    }
+}
+
+@MainActor
+@Suite("Edge dock")
+struct EdgeDockTests {
+    /// A point on an outer edge of one of this Mac's displays (nil if every edge is a seam).
+    private func outerEdge() -> (pointer: CGPoint, edge: DockEdge, display: DockLayout.Display)? {
+        for display in NoteWindowManager.displays {
+            let mid = display.frame.midY
+            for x in [display.frame.minX + 1, display.frame.maxX - 1] {
+                if let hit = DockLayout.edge(at: CGPoint(x: x, y: mid), in: NoteWindowManager.displays) {
+                    return (CGPoint(x: x, y: mid), hit.edge, hit.display)
+                }
+            }
+        }
+        return nil
+    }
+
+    @Test("dragging a note to an outer edge folds it into a tab; pulling it out unfolds it, full size, where it's let go")
+    func dockAndUndockByDrag() async throws {
+        _ = NSApplication.shared
+        guard let target = outerEdge() else { return }
+        let db = try AppDatabase.makeInMemory()
+        let display = target.display.visible
+        let note = Note(title: "Groceries", frameX: display.midX - 140, frameY: display.midY - 180, frameW: 280, frameH: 360)
+        try await db.insert(note)
+        let manager = NoteWindowManager(appDatabase: db)
+        let panel = manager.openNote(note, makeKey: false)
+        defer { panel.close() }
+
+        // Drag the header to the edge: the note folds into its tab there, frameless.
+        let folded = try #require(panel.onDragMove?(target.pointer, panel.frame))
+        #expect(folded.width == DockLayout.maxTabWidth)
+        #expect(target.edge == .left ? folded.minX == display.minX : folded.maxX == display.maxX)
+        #expect(!panel.styleMask.contains(.titled))
+        panel.setFrame(folded, display: false)
+        // Moving along the edge keeps the window's own size, so `performDrag` only moves it (AppKit rounds a
+        // window's size; a fractional tab height resized and redrew the tab on every step).
+        let along = CGPoint(x: target.pointer.x, y: target.pointer.y - 30)
+        #expect(try #require(panel.onDragMove?(along, panel.frame)).size == panel.frame.size)
+        panel.onDragEnded?()
+        #expect(panel.frame.width <= DockLayout.maxTabWidth)
+        try await waitFor { try await db.note(id: note.id)?.dockEdge == target.edge }
+
+        // Pull it back out to the middle: the note unfolds at its own size, with its frame back.
+        let middle = CGPoint(x: display.midX, y: display.midY)
+        let unfolded = try #require(panel.onDragMove?(middle, panel.frame))
+        #expect(unfolded.size == CGSize(width: 280, height: 360))
+        #expect(panel.styleMask.contains(.titled))
+        panel.setFrame(unfolded, display: false)
+        panel.onDragEnded?()
+        try await waitFor { try await db.note(id: note.id)?.dockEdge == nil }
+    }
+
+    /// Under the whole suite's load a database write can take over a second, so this waits up to 10.
+    @Test("a hovered sliver slides out and stays out while the pointer is on it, whatever leave is reported")
+    func hoverSlidesOutAndBack() async throws {
+        _ = NSApplication.shared
+        guard let target = outerEdge() else { return }
+        let db = try AppDatabase.makeInMemory()
+        let display = target.display.visible
+        let note = Note(title: "Groceries", frameX: display.midX - 140, frameY: display.midY - 180, frameW: 280, frameH: 360,
+                        dockEdge: target.edge)
+        try await db.insert(note)
+        let manager = NoteWindowManager(appDatabase: db)
+        let panel = manager.openNote(note, makeKey: false)
+        defer { panel.close() }
+        #expect(panel.frame.width == DockLayout.sliverWidth)   // opens resting as its sliver
+
+        var pointer = NSPoint(x: panel.frame.midX, y: panel.frame.midY)
+        manager.pointerLocation = { pointer }
+        manager.tabHover(note.id, inside: true)
+        try await waitFor { panel.frame.width == DockLayout.maxTabWidth }
+        manager.tabHover(note.id, inside: false)   // a leave reported while the pointer is still on it
+        try await Task.sleep(for: .milliseconds(400))
+        #expect(panel.frame.width == DockLayout.maxTabWidth)
+
+        pointer = NSPoint(x: display.midX, y: display.midY)   // really gone
+        try await waitFor { panel.frame.width == DockLayout.sliverWidth }
+    }
+
+    @Test("opening a docked note while its tab is still sliding out opens it at full size")
+    func openMidSlide() async throws {
+        _ = NSApplication.shared
+        guard let target = outerEdge() else { return }
+        let db = try AppDatabase.makeInMemory()
+        let display = target.display.visible
+        let note = Note(title: "StreakPaw", frameX: display.midX - 140, frameY: display.midY - 180, frameW: 280, frameH: 360,
+                        dockEdge: target.edge)
+        try await db.insert(note)
+        let manager = NoteWindowManager(appDatabase: db)
+        let panel = manager.openNote(note, makeKey: false)
+        defer { panel.close() }
+        let onTab = NSPoint(x: panel.frame.midX, y: panel.frame.midY)
+        manager.pointerLocation = { onTab }
+
+        manager.tabHover(note.id, inside: true)          // the slide-out starts (0.22 s)
+        manager.openNote(note)                           // …and a click opens it straight away
+        try await Task.sleep(for: .milliseconds(500))    // past the end of the slide
+        #expect(panel.frame.size == CGSize(width: 280, height: 360))
+    }
+
+    /// A docked note on the outer edge, opened as its tab (as at launch).
+    private func openDocked(_ target: (pointer: CGPoint, edge: DockEdge, display: DockLayout.Display))
+        async throws -> (manager: NoteWindowManager, panel: NotePanel, note: Note, db: AppDatabase) {
+        let db = try AppDatabase.makeInMemory()
+        let display = target.display.visible
+        let note = Note(title: "Groceries", frameX: display.midX - 140, frameY: display.midY - 180, frameW: 280, frameH: 360,
+                        dockEdge: target.edge)
+        try await db.insert(note)
+        let manager = NoteWindowManager(appDatabase: db)
+        return (manager, manager.openNote(note, makeKey: false), note, db)
+    }
+
+    @Test("a quick edit: the open note's quick-add has the keyboard, and the note goes back once the pointer leaves, not while something's typed")
+    func quickEdit() async throws {
+        _ = NSApplication.shared
+        guard let target = outerEdge() else { return }
+        let (manager, panel, note, _) = try await openDocked(target)
+        defer { withExtendedLifetime(manager) { panel.close() } }   // its pointer watch holds it weakly
+        var pointer = NSPoint(x: panel.frame.midX, y: panel.frame.midY)   // on the tab: a click opens it
+        manager.pointerLocation = { pointer }
+        manager.openNote(note)
+        try await waitFor { panel.frame.width == 280 && panel.alphaValue == 1 && panel.firstResponder is EditorTextView }
+        let editor = try #require(panel.firstResponder as? EditorTextView)
+        pointer = NSPoint(x: panel.frame.midX, y: panel.frame.midY)
+        try await Task.sleep(for: .milliseconds(300))
+        editor.string = "Olive oil"   // typed, not added yet
+        pointer = NSPoint(x: target.display.visible.midX, y: target.display.visible.midY)
+        try await Task.sleep(for: .milliseconds(1500))
+        #expect(panel.frame.width == 280)   // it waits for Return (or Esc)
+        editor.string = ""                  // Return added it
+        try await waitFor { panel.frame.width == DockLayout.sliverWidth }
+    }
+
+    @Test("an open docked note with its ⋯ menu up stays out, though the keyboard and the pointer went elsewhere")
+    func staysOutWhileItsMenuIsOpen() async throws {
+        _ = NSApplication.shared
+        guard let target = outerEdge() else { return }
+        let (manager, panel, note, _) = try await openDocked(target)
+        defer { withExtendedLifetime(manager) { panel.close() } }   // its pointer watch holds it weakly
+        var pointer = NSPoint(x: panel.frame.midX, y: panel.frame.midY)
+        manager.pointerLocation = { pointer }
+        manager.openNote(note)
+        try await waitFor { panel.frame.width == 280 }
+        // The ⋯ popover (and All emoji…'s viewer beside it): a child window that has the keyboard and the pointer.
+        let menu = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 10, height: 10), styleMask: .borderless,
+                            backing: .buffered, defer: false)
+        menu.alphaValue = 0
+        menu.ignoresMouseEvents = true
+        menu.isReleasedWhenClosed = false
+        panel.addChildWindow(menu, ordered: .above)
+        manager.windowDidResignKey(Notification(name: NSWindow.didResignKeyNotification, object: panel))
+        pointer = NSPoint(x: target.display.visible.midX, y: target.display.visible.midY)
+        try await Task.sleep(for: .milliseconds(1500))
+        #expect(panel.frame.width == 280)
+        panel.removeChildWindow(menu)
+        menu.close()   // the menu closed: elsewhere is where you are, so it goes back
+        try await waitFor { panel.frame.width == DockLayout.sliverWidth }
+    }
+
+    @Test("opened from the menu bar, a docked note waits for the pointer to come over before it can go back by itself")
+    func openedFromMenuWaitsForPointer() async throws {
+        _ = NSApplication.shared
+        guard let target = outerEdge() else { return }
+        let (manager, panel, note, _) = try await openDocked(target)
+        defer { withExtendedLifetime(manager) { panel.close() } }   // its pointer watch holds it weakly
+        var pointer = NSPoint(x: target.display.visible.midX, y: target.display.visible.maxY - 2)   // up at the menu bar
+        manager.pointerLocation = { pointer }
+        manager.openNote(note)
+        try await waitFor { panel.frame.width == 280 }
+        try await Task.sleep(for: .milliseconds(1500))
+        #expect(panel.frame.width == 280)
+        pointer = NSPoint(x: panel.frame.midX, y: panel.frame.midY)
+        try await Task.sleep(for: .milliseconds(300))
+        pointer = NSPoint(x: target.display.visible.midX, y: target.display.visible.midY)
+        try await waitFor { panel.frame.width == DockLayout.sliverWidth }
+    }
+
+    @Test("Esc in the open note's empty quick-add puts it back into the dock")
+    func escapePutsBack() async throws {
+        _ = NSApplication.shared
+        guard let target = outerEdge() else { return }
+        let (manager, panel, note, _) = try await openDocked(target)
+        defer { withExtendedLifetime(manager) { panel.close() } }   // its pointer watch holds it weakly
+        let onTab = NSPoint(x: panel.frame.midX, y: panel.frame.midY)
+        manager.pointerLocation = { onTab }   // stays on the note: only Esc can put it back
+        manager.openNote(note)
+        try await waitFor { panel.frame.width == 280 && panel.firstResponder is EditorTextView }
+        let esc = try #require(NSEvent.keyEvent(
+            with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: panel.windowNumber,
+            context: nil, characters: "\u{1b}", charactersIgnoringModifiers: "\u{1b}", isARepeat: false, keyCode: 53
+        ))
+        panel.sendEvent(esc)
+        try await waitFor { panel.frame.width == DockLayout.sliverWidth }
+    }
+
+    @Test("the open note's dock button undocks it, sliding 40pt in from the edge at full size")
+    func undockButton() async throws {
+        _ = NSApplication.shared
+        guard let target = outerEdge() else { return }
+        let (manager, panel, note, db) = try await openDocked(target)
+        defer { withExtendedLifetime(manager) { panel.close() } }   // its pointer watch holds it weakly
+        let onTab = NSPoint(x: panel.frame.midX, y: panel.frame.midY)
+        manager.pointerLocation = { onTab }
+        manager.openNote(note)
+        try await waitFor { panel.frame.width == 280 && panel.alphaValue == 1 }
+        try await Task.sleep(for: .milliseconds(300))   // the opening slide is done
+        let open = panel.frame
+        manager.controllers[note.id]?.onToggleDock?()
+        try await waitFor { panel.frame == open.offsetBy(dx: target.edge == .left ? 40 : -40, dy: 0) }
+        #expect(panel.alphaValue == 1 && panel.styleMask.contains(.titled))
+        try await waitFor { try await db.note(id: note.id)?.dockEdge == nil }
+    }
+
+    @Test("Undock from the tab's menu unfolds the note unseen and slides it out, without opening it first")
+    func undockFromTab() async throws {
+        _ = NSApplication.shared
+        guard let target = outerEdge() else { return }
+        let (manager, panel, note, db) = try await openDocked(target)
+        defer { withExtendedLifetime(manager) { panel.close() } }   // its pointer watch holds it weakly
+        manager.controllers[note.id]?.onToggleDock?()
+        try await waitFor { panel.frame.width == 280 && panel.alphaValue == 1 }
+        let visible = target.display.visible
+        try await waitFor { target.edge == .left ? panel.frame.minX == visible.minX + 40 : panel.frame.maxX == visible.maxX - 40 }
+        try await waitFor { try await db.note(id: note.id)?.dockEdge == nil }
+    }
+
+    private func waitFor(_ condition: @escaping () async throws -> Bool, timeout: Duration = .seconds(10),
+                         sourceLocation: SourceLocation = #_sourceLocation) async throws {
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+        while ContinuousClock.now < deadline {
+            if try await condition() { return }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        Issue.record("timed out", sourceLocation: sourceLocation)   // at the wait that failed, not here
     }
 }

@@ -27,6 +27,14 @@ export interface Props {
   quick?: string | false;
   quickHint?: boolean;
   interactive?: boolean;
+  /** The list's icon before its title: an emoji, or a symbol (a Phosphor name) drawn in the title's ink. */
+  icon?: string;
+  symbol?: string;
+  /** A private list: a dim lock after the title, and the plain cover it shows while private lists are covered. */
+  private?: boolean;
+  covered?: boolean;
+  /** Open out of its tab at the screen edge: →| (back to the dock) and a lit dock button replace roll-up and pin. */
+  docked?: boolean;
   width?: string;
   class?: string;
   style?: string;
@@ -36,7 +44,7 @@ export interface Props {
 const {
   title, color = 'yellow', material = 'solid', tasks = [], collapsed = false, count,
   revealed = false, pinned = false, addSub, quick = 'Add a task…', quickHint = false,
-  interactive = false, width, class: cls, style, id,
+  interactive = false, icon, symbol, private: isPrivate = false, covered = false, docked = false, width, class: cls, style, id,
 } = Astro.props;
 
 const remaining = count ?? tasks.filter((task) => !task.done).length;
@@ -50,9 +58,12 @@ const plain = (html: string) => html.replace(/<[^>]+>/g, '');
   data-color={color}
   data-material={material}
   data-revealed={revealed || undefined}
+  data-private={isPrivate || undefined}
+  data-covered={covered || undefined}
 >
   {collapsed ? (
     <div class="note-bar">
+      {(icon || symbol) && <span class="note-icon">{symbol ? <Icon name={symbol} /> : icon}</span>}
       <span class="note-title">{title}</span>
       {remaining > 0 && <span class="count">{remaining}</span>}
       <span class="note-ctl" aria-hidden="true">
@@ -65,16 +76,31 @@ const plain = (html: string) => html.replace(/<[^>]+>/g, '');
     <>
       <div class="note-head">
         <div class="note-row">
+          {(icon || symbol) && <span class="note-icon" data-icon>{symbol ? <Icon name={symbol} /> : icon}</span>}
           <span class="note-title">{title}</span>
+          <span class="note-private-title">Private</span>
+          {isPrivate && <span class="note-lock"><Icon name="lock-simple-fill" /></span>}
           <span class="note-ctl" aria-hidden="true">
             <span class="ic"><Icon name="dots-three-bold" /></span>
-            <span class="ic"><Icon name="caret-up" /></span>
-            <span class:list={['ic', { on: pinned }]}><Icon name={pinned ? 'push-pin-fill' : 'push-pin'} /></span>
+            {docked ? (
+              <>
+                <span class="ic" data-put-back title="Back to dock (Esc)"><Icon name="arrow-line-right" /></span>
+                <span class="ic on" title="Docked. Click to undock"><Icon name="sidebar-simple-fill" class="-scale-x-100" /></span>
+              </>
+            ) : (
+              <>
+                <span class="ic"><Icon name="caret-up" /></span>
+                <span class:list={['ic', { on: pinned }]}><Icon name={pinned ? 'push-pin-fill' : 'push-pin'} /></span>
+              </>
+            )}
             <span class="ic"><Icon name="x" /></span>
           </span>
         </div>
         <div class="note-rule" />
       </div>
+      {isPrivate && (
+        <div class="note-cover"><Icon name="lock-simple-fill" /><strong>Private</strong><span>Covered while you share</span></div>
+      )}
       <div class="note-list">
         {tasks.map((task, i) => (
           <>

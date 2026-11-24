@@ -40,6 +40,34 @@ final class NoteController {
     /// Asks the manager to show a task's image (by task id) in the image window.
     @ObservationIgnored var onOpenImage: ((UUID) -> Void)?
 
+    /// Asks the manager to re-apply the window's privacy (this list's Private switch changed).
+    @ObservationIgnored var onPrivacyChange: (() -> Void)?
+
+    /// Set by `NoteWindowManager`: Settings › Treat every list as private.
+    var everyListPrivate = false
+    /// Set by `NoteWindowManager`: private lists are covered while the screen is shared.
+    var coveringPrivate = false
+    /// This list stays out of screen shares (its own switch, or Settings for every list).
+    var isPrivate: Bool { everyListPrivate || note.isPrivate }
+    /// Drawn as a plain cover right now: no title, no icon, no tasks.
+    var isCovered: Bool { coveringPrivate && isPrivate }
+
+    // Edge dock, driven by `NoteWindowManager` (which keeps its own record: the note row can lag).
+    /// Docked to a display edge (shown as a tab, or peeking out of one).
+    var isDocked = false
+    /// The edge the tab sits against: while docked, and while a drag holds the note folded at an edge.
+    var tabEdge: DockEdge = .right
+    /// How tabs look (Settings › General › Docked tabs).
+    var dockTabStyle: DockTabStyle = .titleCount
+    /// The pointer entered or left the note's window (a resting sliver slides out into its tab).
+    @ObservationIgnored var onPointerInside: ((Bool) -> Void)?
+    /// A click on the tab: open the note.
+    @ObservationIgnored var onTabClick: (() -> Void)?
+    /// ⋯ › Dock to Edge / Undock, the open note's dock button, the tab's Undock.
+    @ObservationIgnored var onToggleDock: (() -> Void)?
+    /// The open note's →|: back into its tab.
+    @ObservationIgnored var onPutBack: (() -> Void)?
+
     init(note: Note, database: AppDatabase) {
         self.noteID = note.id
         self.note = note
@@ -103,6 +131,9 @@ final class NoteController {
         }
         if old.isCollapsed != updated.isCollapsed {
             onSetCollapsed?(updated.isCollapsed)
+        }
+        if old.isPrivate != updated.isPrivate {
+            onPrivacyChange?()
         }
     }
 
@@ -422,6 +453,52 @@ extension NoteController {
         let showOnAllSpaces = note.showOnAllSpaces
         let isCollapsed = note.isCollapsed
         onApplyBehavior?(floatOnTop, showOnAllSpaces)   // update the live window at once
+        Task { [db] in
+            try? await db.updateNoteFlags(
+                id: id, floatOnTop: floatOnTop,
+                showOnAllSpaces: showOnAllSpaces, isCollapsed: isCollapsed
+            )
+        }
+    }
+
+    // MARK: - Icon and privacy
+
+    /// ⋯ › Icon: an emoji or symbol before the title (nil removes it).
+    func setIcon(_ icon: NoteIcon?) {
+        let stored = icon?.stored
+        guard stored != note.icon else { return }
+        note.icon = stored
+        let id = noteID
+        Task { [db] in try? await db.updateNoteIcon(id: id, icon: stored) }
+    }
+
+    /// Persists the edge the note is docked to (nil: undocked). The window side is the manager's. Always
+    /// written, never skipped as unchanged: `note` can still hold a stale row from its observation (seen under
+    /// load), and skipping on that left a note docked in the database after it was undocked.
+    func setDockEdge(_ edge: DockEdge?) {
+        note.dockEdge = edge
+        let id = noteID
+        Task { [db] in try? await db.updateNoteDock(id: id, edge: edge) }
+    }
+
+    /// ⋯ › Private.
+    func togglePrivate() {
+        note.isPrivate.toggle()
+        let id = noteID
+        let isPrivate = note.isPrivate
+        onPrivacyChange?()
+        Task { [db] in try? await db.updateNotePrivate(id: id, isPrivate: isPrivate) }
+    }
+
+    /// ⋯ › Over full-screen apps: a pinned note also stays on every desktop and above full-screen apps. Kept
+    /// through an unpin (the switch hides, the value waits for the next pin).
+    func toggleShowOnAllSpaces() {
+        note.showOnAllSpaces.toggle()
+        let id = noteID
+        let floatOnTop = note.floatOnTop
+        let showOnAllSpaces = note.showOnAllSpaces
+        let isCollapsed = note.isCollapsed
+        onApplyBehavior?(floatOnTop, showOnAllSpaces)
         Task { [db] in
             try? await db.updateNoteFlags(
                 id: id, floatOnTop: floatOnTop,

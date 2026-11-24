@@ -113,7 +113,7 @@ const fmt = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'n
   <section class="border-y border-line bg-surface/60 py-12 sm:py-20">
     <div class="mx-auto grid max-w-6xl items-center gap-10 px-5 lg:grid-cols-[1fr_1.15fr] lg:gap-14">
       <div class="mx-auto w-full max-w-[22em]" style="font-size:15px">
-        <Note title={g.tic.note.title} color={g.tic.note.color} tasks={g.tic.note.tasks} revealed pinned interactive width="22em" />
+        <Note title={g.tic.note.title} icon={g.tic.note.icon} color={g.tic.note.color} tasks={g.tic.note.tasks} revealed pinned interactive width="22em" />
       </div>
       <div>
         <h2 class={h2}>{g.tic.heading}</h2>

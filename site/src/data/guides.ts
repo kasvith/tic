@@ -26,7 +26,7 @@ export interface Guide {
   /** An optional comparison table: a header row, then rows of cells. */
   table?: { heading: string; head: string[]; rows: string[][] };
   /** The closing pitch for Tic, with a note mock beside it. */
-  tic: { heading: string; body: string[]; note: { title: string; color: NoteColor; tasks: Task[] } };
+  tic: { heading: string; body: string[]; note: { title: string; icon?: string; color: NoteColor; tasks: Task[] } };
   faqs: { q: string; a: string }[];
   /** Comparison pages (by slug) that link back to this guide. */
   compare: string[];
@@ -728,6 +728,398 @@ export const guides: Guide[] = [
       },
     ],
     compare: ['todoist'],
+  },
+  {
+    slug: 'sticky-note-over-full-screen-app',
+    title: 'How to keep a sticky note on top of a full-screen app on Mac | Tic',
+    description:
+      'Stickies’ Float on Top can’t reach an app in full screen, which runs in its own space. Two workarounds, and a free sticky note that stays over full-screen apps.',
+    h1: 'How to keep a sticky note on top of a full-screen app on Mac',
+    answer:
+      'Stickies can’t do it. Window › Float on Top keeps a note in front of other windows, but an app in full screen moves into its own space, and a Stickies note doesn’t appear there. Maximise the app instead of going full screen, or use Tic, a free sticky-note to-do app whose pinned lists can stay over full-screen apps.',
+    published: '2026-11-24',
+    modified: '2026-11-24',
+    sections: [
+      {
+        heading: 'Why a floating Stickies note vanishes in full screen',
+        body: [
+          'In Stickies, Window › Float on Top keeps a note in front of your other windows. That works on your desktop, but full screen happens somewhere else. When you click an app’s green button, macOS gives the app its own space, just as a second desktop is its own space.',
+          'A Stickies note belongs to the desktop it sits on and isn’t set to show on any other space. Floating or not, it stays behind when you switch to the full-screen app, and it’s still there when you swipe back.',
+        ],
+      },
+      {
+        heading: 'Maximise the app instead of going full screen',
+        body: [
+          'A maximised window fills the screen but stays on your desktop, with the menu bar and Dock still showing. A floating note stays in front of it.',
+        ],
+        steps: [
+          'If the app is in full screen, hold the pointer over the green button in the top-left corner of the window and choose Exit Full Screen.',
+          'On macOS 15 or later, hold the pointer over the green button and click Fill, or press Fn-Control-F. On macOS 14, hold Option and click the green button.',
+          'Click your Stickies note and choose Window › Float on Top. Choose Window › Translucent as well if you want to see the app through the note.',
+        ],
+      },
+      {
+        heading: 'Or put your list beside the app in Split View',
+        body: [
+          'Split View shows two apps side by side, both in full screen, in a space of their own. If your list is in another app’s window, you can keep it next to your work there. Each app gets only part of the screen, though.',
+        ],
+        steps: [
+          'Hold the pointer over the green button of the app you’re working in. On macOS 15 or later, choose Full Screen › Left of Screen or Right of Screen. On macOS 14, choose Tile Window to Left of Screen or Tile Window to Right of Screen.',
+          'On the other side of the screen, click the window with your list.',
+          'Drag the bar between the two windows to make your list’s side narrower.',
+        ],
+      },
+      {
+        heading: 'Keep a Tic list on top of full-screen apps',
+        body: [
+          'Tic can do what Stickies can’t. Each list is its own sticky note, and a pinned list can stay in view over apps in full screen.',
+        ],
+        steps: [
+          'Hover over the list’s header and click the pin. The list now stays above your other windows.',
+          'Click ⋯ in the header and turn on Over full-screen apps. The switch appears only while the list is pinned.',
+          'Put any app in full screen. The list stays on top of it, and on every desktop. Unpin the list later and it goes back to its own desktop.',
+        ],
+      },
+    ],
+    table: {
+      heading: 'Stickies and Tic over other apps',
+      head: ['', 'Stickies', 'Tic'],
+      rows: [
+        ['Keep a note in front of other windows', 'Window › Float on Top', 'Pin the list'],
+        ['In front of a maximised window', 'Yes', 'Yes'],
+        ['In front of an app in full screen', 'No', 'Yes, with Over full-screen apps'],
+        ['Checkboxes', 'No', 'Yes'],
+        ['Price', 'Free, built in', 'Free and open source'],
+      ],
+    },
+    tic: {
+      heading: 'A sticky note that stays over full-screen apps: Tic',
+      body: [
+        'Tic keeps the Stickies idea, small notes on your desktop, and makes each one a to-do list with a checkbox on every line, subtasks and Markdown. Pin a list, turn on Over full-screen apps, and it stays in view whatever you have in full screen, from your slides to your code editor.',
+        'Lists folded into tabs at the edge of the screen can come along too: turn on Show tabs over full-screen apps in Settings › General › Docked tabs. It’s off until you turn it on. Tic is free and open source, and needs macOS 14 Sonoma or later on Apple silicon.',
+      ],
+      note: {
+        title: 'Release day',
+        icon: '🚀',
+        color: 'purple',
+        tasks: [
+          { t: 'Merge the release branch', done: true },
+          { t: 'Tag <code>v2.4.0</code>', done: true },
+          { t: 'Watch the deploy' },
+          { t: 'Error rates', l: 1 },
+          { t: 'Sign-ups', l: 1 },
+          { t: 'Post the changelog' },
+        ],
+      },
+    },
+    faqs: [
+      {
+        q: 'Does Stickies’ Float on Top work over full-screen apps?',
+        a: 'No. Float on Top keeps a note in front of other windows on its desktop, but an app in full screen runs in its own space, and Stickies notes don’t appear there.',
+      },
+      {
+        q: 'Why does my sticky note disappear when I go full screen?',
+        a: 'Full screen moves the app into its own space, separate from your desktop. The note hasn’t gone anywhere. Swipe left or right with three or four fingers on the trackpad, or press Control with the Left or Right Arrow key, to get back to it.',
+      },
+      {
+        q: 'How do I make an app fill the screen without going full screen?',
+        a: 'Maximise it. On macOS 15 or later, hold the pointer over the green button and click Fill, or press Fn-Control-F. On macOS 14, Option-click the green button. The menu bar and Dock stay visible, and a floating note stays in front.',
+      },
+      {
+        q: 'Can a Tic list stay on top of a full-screen app?',
+        a: 'Yes. Click the pin on the list, then turn on Over full-screen apps in its ⋯ options. Lists docked at the screen edge can do the same with Show tabs over full-screen apps in Settings › General.',
+      },
+      {
+        q: 'What do I need to run Tic?',
+        a: 'A Mac with Apple silicon and macOS 14 Sonoma or later. Tic is free and open source under the MIT license, and installs with one Terminal command from tic.kasvith.me.',
+      },
+    ],
+    compare: ['stickies'],
+  },
+  {
+    slug: 'sticky-notes-screen-edge-mac',
+    title: 'How to keep sticky notes at the side of your Mac screen | Tic',
+    description:
+      'Stickies can’t tuck a note into the edge of your Mac screen. How to collapse and float a note instead, what Stage Manager does, and lists that dock to the side.',
+    h1: 'How to keep sticky notes at the side of your Mac screen',
+    answer:
+      'Stickies can’t dock a note to the edge of the screen. The nearest you get is to double-click a note’s title bar to collapse it, drag it to the side, and choose Window › Float on Top so it stays in front of your other windows. For a list that folds into the edge and slides out when you click it, use Tic, a free sticky-note to-do app for Mac.',
+    published: '2026-11-24',
+    modified: '2026-11-24',
+    sections: [
+      {
+        heading: 'Collapse a Stickies note and park it at the side',
+        body: ['Stickies has no way to tuck a note into the edge of the screen, but you can shrink a note down and keep it there.'],
+        steps: [
+          'Double-click the note’s title bar. The note collapses, and its first line shows in the title bar.',
+          'Drag the note by its title bar to the side of the screen.',
+          'Choose Window › Float on Top so the note stays in front of your other windows.',
+          'To read or edit the note, double-click the title bar to expand it, then double-click again to collapse it.',
+          'With several notes, choose Window › Arrange By, then choose an option to group them.',
+        ],
+      },
+      {
+        heading: 'What a collapsed note can’t do',
+        body: [
+          'A collapsed note is still a bar on your screen, not something folded into the edge. With Float on Top it sits over whatever is under it, and without it other windows cover the note.',
+          'It also doesn’t put itself away: a note you expand stays open until you double-click it again. Float on Top is set one note at a time, and a Stickies note is plain text, with nothing to tick.',
+        ],
+        link: { href: '/guides/stickies-checkboxes/', label: 'How to add checkboxes in Stickies' },
+      },
+      {
+        heading: 'Stage Manager keeps apps at the side, not notes',
+        body: [
+          'Stage Manager, built into macOS, lines up your recently used apps along the left side of the screen and puts the window you’re working in at the centre. Click an app on the left to switch to it. If you turn off Show recent apps in Stage Manager, they stay hidden until you move the pointer to the left edge of the screen.',
+          'It arranges every app on your Mac, though, rather than giving one note a spot at the edge. To try it, choose Apple menu › System Settings, click Desktop & Dock, then turn on Stage Manager.',
+        ],
+      },
+    ],
+    table: {
+      heading: 'Stickies or Tic at the side of the screen',
+      head: ['', 'Stickies, collapsed', 'Tic, docked'],
+      rows: [
+        ['What stays at the side', 'The note’s title bar, wherever you drag it', 'A thin sliver in the list’s colour, in the left or right edge'],
+        ['In front of other windows', 'With Window › Float on Top, set per note', 'Yes, on top of every window'],
+        ['What you see at a glance', 'The note’s first line', 'Point at it: the list’s name, icon and open tasks'],
+        ['Open it', 'Double-click the title bar', 'Click the tab'],
+        ['Put it away', 'Double-click the title bar again', 'It goes back by itself when you move on, or press Esc'],
+        ['Checkboxes', 'No', 'Yes'],
+      ],
+    },
+    tic: {
+      heading: 'Lists that dock to the edge: Tic',
+      body: [
+        'Tic makes each to-do list its own sticky note, and any list can fold into the side of the screen. Drag it by its header to the left or right edge of a display, including the edge between two displays, and it folds into a tab. Or choose Dock to Edge from the list’s ⋯ menu to send it to the nearer edge.',
+        'A docked list rests as a thin sliver in its colour, on top of every window, so nothing hides it. Point at it and it slides out into a tab with the list’s name, its icon and how many tasks are open. Click the tab and the list opens at full size with the cursor already in Add a task: click, type, Return, and get on with your work. It slides back a second after the pointer leaves, unless you’ve typed something you haven’t added yet, or straight away with Esc, the →| button in its header, or a click anywhere else.',
+        'Drag a tab along the edge to move it; tabs on one edge stack. To undock a list, drag it away from the edge or choose Undock from its ⋯ menu. For a list you’d rather leave where it is, double-click its title to roll it up to a bar, as in Stickies. Tic is free and open source, and needs macOS 14 Sonoma or later on Apple silicon.',
+      ],
+      note: {
+        title: 'Follow-ups',
+        icon: '📌',
+        color: 'pink',
+        tasks: [
+          { t: 'Send Sam the <strong>contract</strong>', done: true },
+          { t: 'Call the bank back' },
+          { t: 'Book the team lunch' },
+          { t: 'Check dietary needs', l: 1 },
+        ],
+      },
+    },
+    faqs: [
+      {
+        q: 'Can Stickies notes dock to the side of the screen?',
+        a: 'No. Stickies has no dock or edge feature. You can collapse a note by double-clicking its title bar, drag it to the side, and choose Window › Float on Top to keep it in front of other windows.',
+      },
+      {
+        q: 'How do I collapse a sticky note on a Mac?',
+        a: 'In Stickies, double-click the note’s title bar. The note collapses and shows its first line in the title bar. Double-click the title bar again to expand it.',
+      },
+      {
+        q: 'Does Stage Manager keep windows at the side of the screen?',
+        a: 'It keeps your recently used apps along the left side of the screen, with the window you’re working in at the centre, and you click an app to switch to it. It works with whole apps, not single notes.',
+      },
+      {
+        q: 'Can a docked Tic list show over full-screen apps?',
+        a: 'Yes, if you turn it on. In Tic’s Settings › General › Docked tabs, turn on Show tabs over full-screen apps. It’s off by default.',
+      },
+      {
+        q: 'How do I undock a list in Tic?',
+        a: 'Drag the tab or the open list away from the edge, click the lit dock button in the open list’s header, or choose Undock from the list’s ⋯ menu. You can also right-click the tab and choose Undock.',
+      },
+    ],
+    compare: ['stickies'],
+  },
+  {
+    slug: 'emoji-in-sticky-notes-mac',
+    title: 'How to add emoji to sticky notes on Mac | Tic',
+    description:
+      'Add emoji to a Stickies note with Control-Command-Space or Globe-E, use one as the note’s label, and give each to-do list in Tic its own emoji or symbol icon.',
+    h1: 'How to add emoji to sticky notes on Mac',
+    answer:
+      'Click in a Stickies note and press Control-Command-Space, or Fn-E or Globe-E, to open the Character Viewer. Search for an emoji and click it. In Stickies an emoji is just text, and notes have no title or icon, so an emoji at the start of the first line is the nearest thing to a label. Tic, a free sticky-note to-do app, gives each list its own emoji or symbol icon.',
+    published: '2026-11-24',
+    modified: '2026-11-24',
+    sections: [
+      {
+        heading: 'Add an emoji to a Stickies note',
+        steps: [
+          'Click in your Stickies note where the emoji should go.',
+          'Press Control-Command-Space, or Fn-E or Globe-E, or choose Edit › Emoji & Symbols. The Character Viewer opens.',
+          'Type a word such as “heart” or “star” in its search field.',
+          'Click an emoji to add it to the note. If the viewer is expanded to its full window, double-click it instead.',
+        ],
+      },
+      {
+        heading: 'Faster: type the word, then press Fn-E',
+        body: [
+          'Type a common word such as heart or thumbs up, then press Fn-E or Globe-E. macOS suggests matching emoji. Press Return to replace the word with the suggested emoji, or choose another suggestion. If nothing matches, the Character Viewer opens instead.',
+          'To open the viewer with a single key, open System Settings, click Keyboard, and set “Press fn key to” or “Press Globe key to” to Show Emoji & Symbols.',
+        ],
+      },
+      {
+        heading: 'Use an emoji as a note’s label',
+        body: [
+          'Stickies notes have no title or icon of their own. When you collapse a note by double-clicking its title bar, the title bar shows the note’s first line. Start that line with an emoji, such as 🛒 Groceries, and you can tell your collapsed notes apart at a glance.',
+        ],
+      },
+      {
+        heading: 'What an emoji in Stickies can’t do',
+        body: [
+          'An emoji in Stickies is a character in the note’s text, like any letter. No setting makes it the note’s icon, so your label is whatever sits at the start of the first line, and editing that line can delete it.',
+          'The Character Viewer also has ☐ and ☑ symbols, which make a note look like a checklist, but you can’t tick them with a click.',
+        ],
+        link: { href: '/guides/stickies-checkboxes/', label: 'How to add checkboxes in Stickies' },
+      },
+    ],
+    table: {
+      heading: 'Emoji in Stickies and in Tic',
+      head: ['', 'Stickies', 'Tic'],
+      rows: [
+        ['Emoji in the text', 'Yes, from the Character Viewer', 'Yes, in any task'],
+        ['An icon for each note', 'No. Start the first line with an emoji', 'Yes, an emoji or one of 12 symbols'],
+        ['Where the label shows', 'In the text, and in the title bar when the note is collapsed', 'Before the title, on the rolled-up bar and on the docked tab'],
+        ['Checkboxes', 'No', 'One on every task'],
+        ['Price', 'Free, built in', 'Free and open source'],
+      ],
+    },
+    tic: {
+      heading: 'An emoji or a symbol for every list: Tic',
+      body: [
+        'In Tic each to-do list is its own sticky note, and each one can have an icon. Open the list’s ⋯ options, choose Icon, and pick from the Emoji or Symbols tab. The icon sits before the list’s title, stays on the bar when you roll the list up, and shows on the list’s tab when you dock it at the edge of the screen.',
+        'Emoji keep their own colours. The 12 symbols, from a shopping cart and a light bulb to a calendar and a gift, are drawn in the list’s own ink, so they match the note. Emoji you’ve picked lately come first in every list’s picker. All emoji… opens the macOS Emoji & Symbols viewer for any other emoji, and Remove clears the icon.',
+        'If you sync a list between your Macs, its icon goes with it, and an AI agent connected over MCP can set a list’s icon. Tasks can hold emoji too, like any text. Tic is free and open source, and needs macOS 14 Sonoma or later on Apple silicon.',
+      ],
+      note: {
+        title: 'Groceries',
+        icon: '🛒',
+        color: 'green',
+        tasks: [
+          { t: 'Oat milk', done: true },
+          { t: 'Bread' },
+          { t: 'Birthday party 🎂' },
+          { t: 'Candles', l: 1, done: true },
+          { t: 'Balloons', l: 1 },
+        ],
+      },
+    },
+    faqs: [
+      {
+        q: 'How do I type emoji on a Mac?',
+        a: 'Press Control-Command-Space, or Fn-E or Globe-E, or choose Edit › Emoji & Symbols in the app you’re typing in. Search for the emoji in the Character Viewer and click it to add it.',
+      },
+      {
+        q: 'Can one key open the emoji picker on a Mac?',
+        a: 'Yes. Open System Settings, click Keyboard, and set “Press fn key to” or “Press Globe key to” to Show Emoji & Symbols. Pressing that key then opens the Character Viewer.',
+      },
+      {
+        q: 'Can a Stickies note have a title or an icon?',
+        a: 'No. A Stickies note is just its text. When you collapse a note, its title bar shows the first line, so an emoji at the start of that line works as a label.',
+      },
+      {
+        q: 'Can I give a to-do list an icon on a Mac?',
+        a: 'In Tic, yes. Choose Icon in a list’s ⋯ options, then pick an emoji or one of 12 symbols drawn in the list’s ink. Tic is free and open source, and installs with one Terminal command from tic.kasvith.me.',
+      },
+      {
+        q: 'Can I put emoji inside tasks in Tic?',
+        a: 'Yes. A task is text, so you can add emoji with Control-Command-Space, the same as anywhere else on your Mac.',
+      },
+    ],
+    compare: ['stickies'],
+  },
+  {
+    slug: 'hide-notes-when-screen-sharing-mac',
+    title: 'How to hide sticky notes when screen sharing on a Mac | Tic',
+    description:
+      'Keep sticky notes out of a Zoom, Teams or Google Meet screen share on Mac: share one window, hide Stickies with Command-H, or cover private lists in Tic.',
+    h1: 'How to hide sticky notes when screen sharing on a Mac',
+    answer:
+      'Share one window instead of your entire screen. Zoom, Microsoft Teams and Google Meet all let you pick a single window, so the call sees that window rather than your desktop and the notes on it. If you have to share the whole screen, click a Stickies note and press Command-H to hide every note first. Tic, a free sticky-note to-do app, can also mark lists private and cover them while you share.',
+    published: '2026-11-24',
+    modified: '2026-11-24',
+    sections: [
+      {
+        heading: 'Share one window, not your whole screen',
+        body: [
+          'When you share your entire screen, everyone on the call sees everything you see, sticky notes included. Zoom, Teams and Meet each let you share a single window instead.',
+          'The first time you share, macOS asks you to let the app record your screen (for Meet, your browser). If you missed the prompt, allow it in System Settings › Privacy & Security.',
+        ],
+        steps: [
+          'Zoom: click Share in the meeting controls. On the Screens tab, choose the window of the app you want to show rather than your screen, then click Share. Hold Shift to pick more than one app.',
+          'Microsoft Teams: select Share in the meeting controls, then choose a window instead of your entire screen.',
+          'Google Meet: click Present now at the bottom, choose A window or A tab instead of Your entire screen, then click Share.',
+        ],
+      },
+      {
+        heading: 'Or use the share menu built into macOS',
+        body: ['On macOS 15 Sequoia or later, depending on your Mac model, macOS has its own screen-sharing menu for video calls.'],
+        steps: [
+          'Start a call in FaceTime, or another video app that supports macOS’s screen sharing.',
+          'Click the Video status menu in the menu bar, then click the Screen Share icon.',
+          'Hold the pointer over the window you want to show and click Share This Window. Click Stop Sharing when you’re done.',
+        ],
+      },
+      {
+        heading: 'Sharing the whole screen? Hide Stickies first',
+        body: [
+          'Sometimes you need the whole screen, say to move between apps in a demo. Then hide the notes before you start. It works for any app, but the notes vanish for you too, so a list you wanted to glance at during the call goes with them.',
+        ],
+        steps: [
+          'Click any Stickies note so Stickies is the front app.',
+          'Press Command-H. macOS hides all of Stickies’ windows, so every note goes at once.',
+          'Or click the app you’re about to show and press Option-Command-H, which hides every other app, Stickies included.',
+          'After the call, switch back to Stickies to see your notes again.',
+        ],
+      },
+      {
+        heading: 'Keep notifications out of the share too',
+        body: [
+          'A message banner can pop up mid-share just as easily as a note can sit on the screen. macOS can pause notifications while you share: open System Settings, click Notifications, and under Notification Center turn off notifications when mirroring or sharing the display.',
+        ],
+      },
+    ],
+    tic: {
+      heading: 'Private lists in Tic',
+      body: [
+        'Tic puts each to-do list in its own sticky-note window, with real checkboxes, subtasks and Markdown, and lets you mark the lists nobody else should see. Switch on Private in a list’s ⋯ options, or turn on Treat every list as private in Settings › General. A dim lock after the title marks a private list, and the setting travels with the list if you sync it between Macs.',
+        'A private list’s window, and any picture you open from it, is marked to be left out of screen captures, and capture tools that honour that mark leave it out of screenshots and shares. Not every tool does: on macOS 15.4 and later, reports say macOS’s newer capture system ignores it. So before you share your whole screen, choose Cover Private Lists from Tic’s menu bar menu, and every private list shows a plain Private cover instead of its title, icon and tasks. Tic can’t yet tell when a share starts, so you switch the cover on yourself, and off again after the call.',
+        'Tic is free and open source, and needs macOS 14 Sonoma or later on Apple silicon.',
+      ],
+      note: {
+        title: 'Before the call',
+        icon: '🎥',
+        color: 'pink',
+        tasks: [
+          { t: 'Close personal tabs', done: true },
+          { t: 'Turn on Cover Private Lists', done: true },
+          { t: 'Share the demo' },
+          { t: 'One window, not the screen', l: 1, done: true },
+          { t: 'Notifications off', l: 1 },
+        ],
+      },
+    },
+    faqs: [
+      {
+        q: 'Can people see my sticky notes when I share my screen?',
+        a: 'Yes, if you share your entire screen and the notes are on it. Share a single window instead, or hide Stickies with Command-H before you start.',
+      },
+      {
+        q: 'How do I hide Stickies on a Zoom call?',
+        a: 'Share the app’s window instead of your screen: click Share, then choose that window on the Screens tab. If you need the whole screen, click a Stickies note and press Command-H first.',
+      },
+      {
+        q: 'Does Command-H close my Stickies notes?',
+        a: 'No. It hides Stickies’ windows without quitting the app, and the notes stay as they were. Switch back to Stickies to see them again.',
+      },
+      {
+        q: 'Does Tic hide itself from screen shares automatically?',
+        a: 'Not reliably. A private list’s window is marked to be left out of captures, which some share tools honour, but on macOS 15.4 and later reports say macOS’s newer capture system ignores the mark. Tic can’t yet tell when a share starts, so switch on Cover Private Lists from its menu bar menu before you share.',
+      },
+      {
+        q: 'Can I stop notifications appearing while I share my screen?',
+        a: 'Yes. In System Settings › Notifications, under Notification Center, turn off notifications when mirroring or sharing the display.',
+      },
+    ],
+    compare: ['stickies'],
   },
 ];
 

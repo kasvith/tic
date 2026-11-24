@@ -66,6 +66,9 @@ struct QuickAddBar: View {
             PlainTextEditor(
                 text: $newTaskText,
                 textColor: theme.task,
+                // A docked note's list appears only when it opens (its tab draws nothing else), so this field is new
+                // each time and takes the keyboard: click the tab, type, Return.
+                autoFocus: controller.isDocked,
                 focusRequest: controller.quickAddFocusRequest,
                 // Focus loss adds typed text too — but not while an image is waiting: that stays put until
                 // Return (`onSubmit`), so clicking away can never create an image task by accident.

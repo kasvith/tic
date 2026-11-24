@@ -123,6 +123,27 @@ struct MCPToolsTests {
         #expect(h.opened.map(\.uuidString) == [id])
     }
 
+    @Test("update_note sets an icon and Private, an empty icon removes it, and a bad icon is a tool error")
+    @MainActor func iconAndPrivate() async throws {
+        let h = try Harness()
+        let (created, _) = await call(h.tools, "create_note", ["title": "Groceries", "icon": "🛒"])
+        let id = try #require(created.objectValue?["id"]?.stringValue)
+        #expect(created.objectValue?["icon"]?.stringValue == "🛒")
+        #expect(created.objectValue?["private"]?.boolValue == false)
+
+        let (updated, err) = await call(h.tools, "update_note",
+            ["note_id": .string(id), "icon": "symbol:cart", "private": true])
+        #expect(!err)
+        #expect(updated.objectValue?["icon"]?.stringValue == "symbol:cart")
+        #expect(updated.objectValue?["private"]?.boolValue == true)
+
+        let (cleared, _) = await call(h.tools, "update_note", ["note_id": .string(id), "icon": ""])
+        #expect(cleared.objectValue?["icon"] == .null)
+
+        let (_, badErr) = await call(h.tools, "update_note", ["note_id": .string(id), "icon": "symbol:rocket.ship"])
+        #expect(badErr)
+    }
+
     @Test("move_note persists the frame via the window action")
     @MainActor func moveNoteAction() async throws {
         let h = try Harness()

@@ -10,7 +10,7 @@ import UniformTypeIdentifiers
 /// `keyDown` gives deterministic control:
 ///   • **Return** → `onCommit` (finish)            • **Shift/Option-Return** → insert a line break
 ///   • **Shift-Tab** → `onIndent` (nest deeper)    • **Ctrl-Shift-Tab** → `onOutdent` (promote)
-///   • **Esc** → `onCommit`
+///   • **Esc** → `onCommit`, and with nothing typed, on to the window (an open docked note goes back)
 /// It grows to fit its content via `sizeThatFits` and commits on focus loss.
 struct PlainTextEditor: NSViewRepresentable {
     /// Vertical inset above the first text line (matches `textContainerInset.height`); used to align
@@ -189,7 +189,9 @@ final class EditorTextView: NSTextView {
                 onSubmit()   // Return-only; lets callers continue (e.g. open the next add row)
             }
         case Key.escape:
+            let empty = string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             onCommit()
+            if empty { window?.cancelOperation(nil) }
         default:
             super.keyDown(with: event)
         }
