@@ -322,6 +322,27 @@ struct EdgeDockTests {
         try await waitFor { panel.frame.width == DockLayout.sliverWidth }
     }
 
+    @Test("opening a docked note while its tab is still sliding out opens it at full size")
+    func openMidSlide() async throws {
+        _ = NSApplication.shared
+        guard let target = outerEdge() else { return }
+        let db = try AppDatabase.makeInMemory()
+        let display = target.display.visible
+        let note = Note(title: "StreakPaw", frameX: display.midX - 140, frameY: display.midY - 180, frameW: 280, frameH: 360,
+                        dockEdge: target.edge)
+        try await db.insert(note)
+        let manager = NoteWindowManager(appDatabase: db)
+        let panel = manager.openNote(note, makeKey: false)
+        defer { panel.close() }
+        let onTab = NSPoint(x: panel.frame.midX, y: panel.frame.midY)
+        manager.pointerLocation = { onTab }
+
+        manager.tabHover(note.id, inside: true)          // the slide-out starts (0.22 s)
+        manager.openNote(note)                           // …and a click opens it straight away
+        try await Task.sleep(for: .milliseconds(500))    // past the end of the slide
+        #expect(panel.frame.size == CGSize(width: 280, height: 360))
+    }
+
     private func waitFor(_ condition: @escaping () async throws -> Bool, timeout: Duration = .seconds(10)) async throws {
         let deadline = ContinuousClock.now.advanced(by: timeout)
         while ContinuousClock.now < deadline {

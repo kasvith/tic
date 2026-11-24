@@ -478,8 +478,9 @@ final class NoteWindowManager: NSObject, NSWindowDelegate {
         // Not a user move: our own placement, or macOS relocating windows around a display change.
         if placing || Date() < suppressSavesUntil { return }
         let id = panel.noteID
-        // A drag saves once, when it's let go; a tab's frame is the manager's (the saved one is its peek).
-        if drags[id] != nil || (dockEdges[id] != nil && !peeks.contains(id)) { return }
+        // A drag saves once, when it's let go. A docked note's saved frame is where it opens: only the user
+        // resizing it while it's open changes that, never the tab's moves or an animation passing through.
+        if drags[id] != nil || (dockEdges[id] != nil && !(peeks.contains(id) && panel.inLiveResize)) { return }
         let live = panel.frame
 
         // While rolled up, the window is at its collapsed height. Still persist position/width, but
@@ -565,7 +566,7 @@ extension NoteWindowManager {
             self.reapplyBehavior(id)
         }
         guard animate else {
-            panel.setFrame(frame, display: true)
+            Self.setFrameNow(panel, frame)
             return finish()
         }
         NSAnimationContext.runAnimationGroup { context in
@@ -591,7 +592,7 @@ extension NoteWindowManager {
         guard peeks.insert(id).inserted else { return panel.makeKeyAndOrderFront(nil) }
         panel.alphaValue = 0
         panel.setFrameless(false)
-        panel.setFrame(DockLayout.peekFrame(edge, tab: tab, size: noteSize(id), in: display.visible), display: true)
+        Self.setFrameNow(panel, DockLayout.peekFrame(edge, tab: tab, size: noteSize(id), in: display.visible))
         panel.makeKeyAndOrderFront(nil)
         fade(panel, to: 1)
     }
@@ -617,6 +618,15 @@ extension NoteWindowManager {
             guard !Task.isCancelled, let self, let panel = self.panels[id] else { return }
             if panel.isKeyWindow || panel.childWindows?.contains(where: \.isVisible) == true { return }
             self.retract(id)
+        }
+    }
+
+    /// Sets a frame at once, replacing any frame animation still running (a tab's slide): a plain `setFrame`
+    /// doesn't stop one (probed), so a click mid-slide opened the note and the slide pulled it back to tab size.
+    static func setFrameNow(_ panel: NSWindow, _ frame: CGRect) {
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0
+            panel.animator().setFrame(frame, display: true)
         }
     }
 
@@ -724,7 +734,7 @@ extension NoteWindowManager {
             }
             peeks.remove(id)
             panel.setFrameless(controller.note.isCollapsed)
-            panel.setFrame(frame, display: true)
+            Self.setFrameNow(panel, frame)
             undock(id)
         } else {
             guard let display = DockLayout.display(for: panel.frame, in: displays) else { return }

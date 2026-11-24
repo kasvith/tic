@@ -166,6 +166,10 @@ panels**, and a few responsibilities are deliberately split across the AppKit/Sw
   for ~0.1 s: following the tracking area's "left" made a hovered tab flash in and out (most likely spurious leaves
   while its window resized under a still pointer; not confirmed). (An earlier design kept tabs under windows and watched the pointer
   with a global `mouseMoved` monitor; in tests installing that stalled the main thread. Gone with the sliver.)
+  **A plain `setFrame` doesn't stop a running frame animation** (probed: the animation wins), so frames set
+  over a possible slide go through `setFrameNow` (a zero-length animation replaces it), and `performDrag`
+  starts the same way; a plain drag only moves (`setFrameOrigin`), resizing just to fold or unfold. A docked
+  note's saved frame changes only on a user live-resize while it's open.
   The manager keeps its own `dockEdges`: the controller's `note` can hold a stale observed row, so
   `setDockEdge` always writes (skipping "unchanged" once left a note docked in the DB after undocking).
   Settings › General › Docked tabs: what a hovered tab shows (`dockTabStyle`) and Show tabs over full-screen apps.

@@ -96,6 +96,12 @@ final class NotePanel: NSPanel {
     /// The top edge stays below the menu bar, as the system drag kept it.
     override func performDrag(with press: NSEvent) {
         let start = convertPoint(toScreen: press.locationInWindow)
+        // A frame animation still running (a tab sliding out) keeps setting the frame and would fight the drag;
+        // a plain `setFrame` doesn't stop one (probed), replacing it with a zero-length one does.
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0
+            animator().setFrame(frame, display: false)
+        }
         let startFrame = frame
         while let event = nextEvent(matching: [.leftMouseDragged, .leftMouseUp]), event.type == .leftMouseDragged {
             let pointer = NSEvent.mouseLocation
@@ -104,7 +110,9 @@ final class NotePanel: NSPanel {
                 next.y = min(next.y, screen.visibleFrame.maxY - startFrame.height)
             }
             let proposed = NSRect(origin: next, size: startFrame.size)
-            setFrame(onDragMove?(pointer, proposed) ?? proposed, display: true)
+            let target = onDragMove?(pointer, proposed) ?? proposed
+            // Only a fold into a tab (or back) resizes; a plain drag just moves, without redrawing the note.
+            if target.size == frame.size { setFrameOrigin(target.origin) } else { setFrame(target, display: true) }
         }
         onDragEnded?()
     }
