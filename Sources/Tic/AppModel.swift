@@ -210,7 +210,7 @@ final class AppModel {
     private static let dockTabStyleKey = "dockTabStyle"
     private static let tabsOverFullScreenKey = "dockTabsOverFullScreen"
 
-    /// Settings › General › Docked tabs: how a docked note's tab looks.
+    /// Settings › General › Docked tabs: what a docked note's tab shows once hovered out of its sliver.
     private(set) var dockTabStyle: DockTabStyle =
         DockTabStyle(rawValue: UserDefaults.standard.string(forKey: AppModel.dockTabStyleKey) ?? "") ?? .titleCount
 

@@ -60,7 +60,7 @@ private struct GeneralSettings: View {
                 }
             }
             Section("Docked tabs") {
-                Picker("Tab style", selection: Binding(get: { model.dockTabStyle }, set: { model.setDockTabStyle($0) })) {
+                Picker("On hover, tabs show", selection: Binding(get: { model.dockTabStyle }, set: { model.setDockTabStyle($0) })) {
                     ForEach(DockTabStyle.allCases) { Text($0.label).tag($0) }
                 }
                 Toggle(isOn: Binding(get: { model.tabsOverFullScreen }, set: { model.setTabsOverFullScreen($0) })) {

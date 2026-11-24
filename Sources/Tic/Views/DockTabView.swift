@@ -1,8 +1,9 @@
 import SwiftUI
 
-/// A docked note's tab: a slim paper tab against its display edge, with the list's count, icon and sideways
-/// name (Settings › General › Docked tabs picks how much). Pointing at it peeks the note out, a click keeps it
-/// out, and a drag moves it along the edge or pulls the note off (`NoteWindowManager`, Edge dock).
+/// A docked note's tab: at rest a thin sliver in its colour against the display edge; hovered, the window slides
+/// out to the full tab with the list's count, icon and sideways name (Settings › General › Docked tabs picks
+/// which), fading in as it widens. A click opens the note, a drag moves the tab along the edge or pulls the note
+/// off (`NoteWindowManager`, Edge dock).
 struct DockTabView: View {
     let controller: NoteController
     /// Always the solid paper theme: a tab is drawn on paper, whatever the note's material.
@@ -17,17 +18,21 @@ struct DockTabView: View {
 
     var body: some View {
         let shape = Self.shape(edge)
-        VStack(spacing: 5) {
-            if style == .titleCount, !controller.isCovered { count }
-            if style != .sliver {
+        GeometryReader { geo in
+            VStack(spacing: 5) {
+                if style == .titleCount, !controller.isCovered { count }
                 if !controller.isCovered, let icon = NoteIcon(stored: note.icon) {
                     NoteIconView(icon: icon, ink: theme.title).font(.system(size: 13))
                 }
                 SidewaysText(text: title, edge: edge).foregroundStyle(theme.title)
             }
+            .padding(.vertical, 9)
+            .frame(width: DockLayout.maxTabWidth, height: geo.size.height, alignment: .top)
+            // Fades in as the sliver widens into the tab.
+            .opacity(min(max((geo.size.width - DockLayout.sliverWidth) / (DockLayout.maxTabWidth - DockLayout.sliverWidth), 0), 1))
+            .frame(width: geo.size.width, alignment: edge == .right ? .leading : .trailing)
+            .clipped()
         }
-        .padding(.vertical, 9)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(shape.fill(theme.fill))
         .overlay(shape.stroke(Color.black.opacity(0.14), lineWidth: 0.5))
         // On top, so every press reaches it: a click opens the note, a drag moves the tab or pulls the note off.
@@ -48,7 +53,7 @@ struct DockTabView: View {
 
     /// Rounded on the side away from the edge, square against it.
     static func shape(_ edge: DockEdge) -> UnevenRoundedRectangle {
-        let r: CGFloat = 8
+        let r: CGFloat = 6
         return edge == .right
             ? UnevenRoundedRectangle(topLeadingRadius: r, bottomLeadingRadius: r, bottomTrailingRadius: 0, topTrailingRadius: 0)
             : UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: 0, bottomTrailingRadius: r, topTrailingRadius: r)

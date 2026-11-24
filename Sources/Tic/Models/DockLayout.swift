@@ -5,15 +5,14 @@ enum DockEdge: String, Codable, Sendable {
     case left, right
 }
 
-/// How a docked note's tab looks (Settings › General › Docked tabs).
+/// What a docked note's tab shows once hovered out of its sliver (Settings › General › Docked tabs).
 enum DockTabStyle: String, CaseIterable, Identifiable, Sendable {
-    case sliver, title, titleCount
+    case title, titleCount
 
     var id: String { rawValue }
 
     var label: String {
         switch self {
-        case .sliver: "Sliver"
         case .title: "Title"
         case .titleCount: "Title + count"
         }
@@ -32,12 +31,11 @@ enum DockLayout {
 
     /// How close to a display's outer edge the pointer must come for a dragged note to fold into a tab.
     static let zone: CGFloat = 24
-    /// How close counts as pointing at the edge, to bring covered tabs forward.
-    static let edgeHover: CGFloat = 3
     /// A tab is never wider than this (a note never narrower than `NoteLayout.minWidth`), so a window this
     /// narrow is a tab: that's how `NoteView` knows which to draw.
     static let maxTabWidth: CGFloat = 26
-    static let sliverWidth: CGFloat = 10
+    /// How wide a docked note rests, on top of every window: hovering slides it out to the full tab.
+    static let sliverWidth: CGFloat = 6
     static let gap: CGFloat = 6
     static let margin: CGFloat = 8
 
@@ -55,6 +53,11 @@ enum DockLayout {
         let x = edge == .left ? visible.minX : visible.maxX - size.width
         let maxY = min(max(top, visible.minY + margin + size.height), visible.maxY - margin)
         return CGRect(x: x, y: maxY - size.height, width: size.width, height: size.height)
+    }
+
+    /// The resting sliver of `tab`: as tall, `sliverWidth` wide, against the same edge.
+    static func restFrame(of tab: CGRect, at edge: DockEdge) -> CGRect {
+        CGRect(x: edge == .left ? tab.minX : tab.maxX - sliverWidth, y: tab.minY, width: sliverWidth, height: tab.height)
     }
 
     /// The same tabs (one edge of one display), moved apart where they'd overlap: the higher one keeps its

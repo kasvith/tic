@@ -100,6 +100,7 @@ struct NoteView: View {
         }
         .background(HoverArea { hovering in
             withAnimation(.easeInOut(duration: 0.15)) { revealed = hovering }
+            controller.onPointerInside?(hovering)
         })
         .ignoresSafeArea()
     }

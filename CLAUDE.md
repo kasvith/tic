@@ -159,12 +159,14 @@ panels**, and a few responsibilities are deliberately split across the AppKit/Sw
   by height, so the manager only sets frames. `NotePanel.performDrag` asks `onDragMove` for each step's frame.
   A **click** on the tab opens the note (no hover: users found it jumpy); it goes back once the panel resigns
   key (not to its own ⋯ popover). Opening and closing fade at full size instead of animating the frame:
-  growing the window from tab to note re-laid out the whole list every frame and lagged. Tabs sit at normal
-  level; a global `mouseMoved` monitor (installed only while something is docked and the app's event loop
-  runs, since in tests it stalled the main thread) brings an edge's tabs forward while pointed at.
+  growing the window from tab to note re-laid out the whole list every frame and lagged. A docked note
+  **rests as a 6pt sliver** (`DockLayout.restFrame`) on top of every window, so nothing can hide it; hovering
+  springs the window out to the full tab (`tabHover` / `slideTab`, cheap since a tab lays out almost nothing),
+  whose content fades in with its width. (An earlier design kept tabs under windows and watched the pointer
+  with a global `mouseMoved` monitor; in tests installing that stalled the main thread. Gone with the sliver.)
   The manager keeps its own `dockEdges`: the controller's `note` can hold a stale observed row, so
   `setDockEdge` always writes (skipping "unchanged" once left a note docked in the DB after undocking).
-  Settings › General › Docked tabs: style (`dockTabStyle`) and Show tabs over full-screen apps.
+  Settings › General › Docked tabs: what a hovered tab shows (`dockTabStyle`) and Show tabs over full-screen apps.
 - **List icons (`NoteIcon`, pure)** — `note.icon` holds one emoji or `symbol:<name>` from a fixed set of
   SF Symbols every macOS 14 has (so any Mac draws what another picked; anything else reads as no icon).
   Emoji draw in colour, symbols in the note's title ink (`NoteIconView`). ⋯ › Icon is one row opening

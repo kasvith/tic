@@ -34,6 +34,14 @@ struct DockLayoutTests {
         #expect(low.minY == laptop.visible.minY + DockLayout.margin)
     }
 
+    @Test("a resting sliver is the tab's height, against the same edge")
+    func sliver() {
+        let right = CGRect(x: 1414, y: 480, width: 26, height: 120)
+        #expect(DockLayout.restFrame(of: right, at: .right) == CGRect(x: 1434, y: 480, width: DockLayout.sliverWidth, height: 120))
+        let left = CGRect(x: 51, y: 480, width: 26, height: 120)
+        #expect(DockLayout.restFrame(of: left, at: .left) == CGRect(x: 51, y: 480, width: DockLayout.sliverWidth, height: 120))
+    }
+
     @Test("overlapping tabs move apart, top first; a stack off the bottom is pushed back up")
     func stacking() {
         let a = CGRect(x: 1414, y: 500, width: 26, height: 100)   // 500–600
