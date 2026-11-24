@@ -35,6 +35,9 @@ final class NotePanel: NSPanel {
         hasShadow = true
         isReleasedWhenClosed = false         // the window manager owns the lifetime
         animationBehavior = .utilityWindow
+        // `swift test` never runs the app (it's running from launch on, restore included): there a note's window
+        // lets the real pointer through and never takes the keyboard, so tests don't fight whoever is at the Mac.
+        ignoresMouseEvents = NSApp?.isRunning != true
 
         hideWindowButtons()
 
@@ -79,8 +82,9 @@ final class NotePanel: NSPanel {
         collectionBehavior = behavior
     }
 
-    /// Borderless/utility panels don't become key by default; we need it for text editing.
-    override var canBecomeKey: Bool { true }
+    /// Borderless/utility panels don't become key by default; we need it for text editing. Not under `swift test`
+    /// (see `init`): a key non-activating panel takes the user's typing.
+    override var canBecomeKey: Bool { NSApp?.isRunning == true }
 
     /// Called when a drag by the note's header has been let go. Set by `NoteWindowManager`.
     var onDragEnded: (() -> Void)?

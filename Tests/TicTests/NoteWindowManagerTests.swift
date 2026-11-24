@@ -281,6 +281,10 @@ struct EdgeDockTests {
         #expect(target.edge == .left ? folded.minX == display.minX : folded.maxX == display.maxX)
         #expect(!panel.styleMask.contains(.titled))
         panel.setFrame(folded, display: false)
+        // Moving along the edge keeps the window's own size, so `performDrag` only moves it (AppKit rounds a
+        // window's size; a fractional tab height resized and redrew the tab on every step).
+        let along = CGPoint(x: target.pointer.x, y: target.pointer.y - 30)
+        #expect(try #require(panel.onDragMove?(along, panel.frame)).size == panel.frame.size)
         panel.onDragEnded?()
         #expect(panel.frame.width <= DockLayout.maxTabWidth)
         try await waitFor { try await db.note(id: note.id)?.dockEdge == target.edge }

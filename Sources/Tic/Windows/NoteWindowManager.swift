@@ -526,7 +526,9 @@ extension NoteWindowManager {
         var extra: CGFloat = 26
         if !controller.isCovered, NoteIcon(stored: note.icon) != nil { extra += 19 }
         if dockTabStyle == .titleCount { extra += 21 }
-        return CGSize(width: DockLayout.maxTabWidth, height: min(max(width + extra, 64), 220))
+        // Whole points, as AppKit rounds a window's size (asked 87.3, got 88): a fractional height never matched the
+        // tab's window, so every step of a drag along the edge resized and redrew it instead of just moving it.
+        return CGSize(width: DockLayout.maxTabWidth, height: min(max(width + extra, 64), 220).rounded(.up))
     }
 
     private func reapplyBehavior(_ id: UUID) {

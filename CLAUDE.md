@@ -28,6 +28,10 @@ open Package.swift          # opens the package in Xcode for GUI editing / previ
 - **Verification** is a clean `swift build`, `swift test` (Swift Testing — `AppDatabaseTests`, `SyncTests`,
   `TaskOutlineTests`, `NoteColorTests`, `TaskImageTests`, …), plus running the app. The outline logic lives in pure,
   testable functions (`TaskOutline`) precisely so it can be covered without a DB or the main actor.
+  Tests share the Mac with its user, so they must never take the real keyboard or mouse: nothing runs the app
+  under `swift test` (`NSApp.isRunning` is false), and there a `NotePanel` ignores the pointer and never becomes
+  key (a key non-activating panel takes whatever the user types). Probe scripts follow suit: no window ordered
+  front, no posted or warped events.
 - `swift run` produces a bare executable (no bundle): fine for dev, but it has no Dock identity
   and **can't register as a login item** (SMAppService needs a real bundle).
 - **Packaging** (`scripts/package.sh` + `Packaging/Info.plist`) assembles a real `dist/Tic.app`
@@ -168,7 +172,9 @@ panels**, and a few responsibilities are deliberately split across the AppKit/Sw
   with a global `mouseMoved` monitor; in tests installing that stalled the main thread. Gone with the sliver.)
   **A plain `setFrame` doesn't stop a running frame animation** (probed: the animation wins), so frames set
   over a possible slide go through `setFrameNow` (a zero-length animation replaces it), and `performDrag`
-  starts the same way; a plain drag only moves (`setFrameOrigin`), resizing just to fold or unfold. A docked
+  starts the same way; a plain drag only moves (`setFrameOrigin`), resizing just to fold or unfold. A tab's height is
+  whole points (`tabSize`): AppKit rounds a window's size (asked 87.3, got 88), so a fractional one never matched and
+  every step of a drag along the edge resized and redrew the tab. A docked
   note's saved frame changes only on a user live-resize while it's open.
   The manager keeps its own `dockEdges`: the controller's `note` can hold a stale observed row, so
   `setDockEdge` always writes (skipping "unchanged" once left a note docked in the DB after undocking).
