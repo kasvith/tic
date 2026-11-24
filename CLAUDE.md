@@ -151,16 +151,17 @@ panels**, and a few responsibilities are deliberately split across the AppKit/Sw
   reach"), and skips files with a newer `schema` — bump it when the format changes **or `NoteColor` /
   `NoteMaterial` gains a case**. A field added as an *optional* register (`SyncNote.icon`, `isPrivate`)
   needs no bump: older files still decode and older Macs ignore it. Off by default (`syncEnabled` default).
-- **Edge dock (`DockLayout`, pure + `NoteWindowManager` › Edge dock)** — drag a note's header to an outer
-  left/right display edge (never a seam between displays) and it folds into a tab; `note.dockEdge` is per
-  Mac (not synced), and while docked the saved frame is where it **peeks**. Tab and peek are the same panel
-  resized: `NoteView` draws `DockTabView` whenever the window is ≤ `DockLayout.maxTabWidth` wide (a note
-  is never that narrow), as it draws the bar by height, so the manager only sets frames. `NotePanel.performDrag`
-  asks `onDragMove` for each step's frame. Hover peeks after 0.15 s, leaving retracts after 0.4 s, a click
-  (or becoming key) keeps it out until it resigns key; a hover-peek shields clicks for 0.35 s
-  (`shieldClicksUntil`) so a click aimed at the tab can't land on the close button that slid under it. Tabs
-  sit at normal level; a global `mouseMoved` monitor (installed only while something is docked and the app's
-  event loop runs, since in tests it stalled the main thread) brings an edge's tabs forward while pointed at.
+- **Edge dock (`DockLayout`, pure + `NoteWindowManager` › Edge dock)** — drag a note's header to the left or
+  right edge of any display (between two displays too: a note dragged across folds for a moment and docks
+  only if let go there) and it folds into a tab; `note.dockEdge` is per Mac (not synced), and while docked
+  the saved frame is where it **peeks**. Tab and peek are the same panel: `NoteView` draws `DockTabView`
+  whenever the window is ≤ `DockLayout.maxTabWidth` wide (a note is never that narrow), as it draws the bar
+  by height, so the manager only sets frames. `NotePanel.performDrag` asks `onDragMove` for each step's frame.
+  A **click** on the tab opens the note (no hover: users found it jumpy); it goes back once the panel resigns
+  key (not to its own ⋯ popover). Opening and closing fade at full size instead of animating the frame:
+  growing the window from tab to note re-laid out the whole list every frame and lagged. Tabs sit at normal
+  level; a global `mouseMoved` monitor (installed only while something is docked and the app's event loop
+  runs, since in tests it stalled the main thread) brings an edge's tabs forward while pointed at.
   The manager keeps its own `dockEdges`: the controller's `note` can hold a stale observed row, so
   `setDockEdge` always writes (skipping "unchanged" once left a note docked in the DB after undocking).
   Settings › General › Docked tabs: style (`dockTabStyle`) and Show tabs over full-screen apps.

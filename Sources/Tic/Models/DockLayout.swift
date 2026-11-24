@@ -41,15 +41,12 @@ enum DockLayout {
     static let gap: CGFloat = 6
     static let margin: CGFloat = 8
 
-    /// The edge `pointer` is within `zone` of, if it's an outer edge: no other display carries on past it at
-    /// that height, so dragging a note across to the next display still works.
+    /// The left or right edge of the display `pointer` is on, if it's within `zone` of one. Edges between two
+    /// displays dock too: a note dragged across folds into a tab for a moment, and docks only if let go there.
     static func edge(at pointer: CGPoint, in displays: [Display], zone: CGFloat = zone) -> (edge: DockEdge, display: Display)? {
         guard let display = displays.first(where: { contains($0.frame, pointer) }) else { return nil }
-        func carriesOn(atX x: CGFloat) -> Bool {
-            displays.contains { $0 != display && contains($0.frame, CGPoint(x: x, y: pointer.y)) }
-        }
-        if pointer.x <= display.frame.minX + zone, !carriesOn(atX: display.frame.minX - 1) { return (.left, display) }
-        if pointer.x >= display.frame.maxX - zone, !carriesOn(atX: display.frame.maxX + 1) { return (.right, display) }
+        if pointer.x <= display.frame.minX + zone { return (.left, display) }
+        if pointer.x >= display.frame.maxX - zone { return (.right, display) }
         return nil
     }
 

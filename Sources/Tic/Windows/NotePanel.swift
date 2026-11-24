@@ -109,28 +109,6 @@ final class NotePanel: NSPanel {
         onDragEnded?()
     }
 
-    /// Until then, a press only keeps a just-peeked note out: aimed at the tab, it mustn't land on whatever slid
-    /// under the pointer as the note came out (its close button, a checkbox). Set by `NoteWindowManager`.
-    var shieldClicksUntil = Date.distantPast
-    var onShieldedClick: (() -> Void)?
-    private var shieldingPress = false
-
-    override func sendEvent(_ event: NSEvent) {
-        switch event.type {
-        case .leftMouseDown where Date() < shieldClicksUntil:
-            shieldingPress = true
-            onShieldedClick?()
-            return
-        case .leftMouseDragged where shieldingPress:
-            return
-        case .leftMouseUp where shieldingPress:
-            shieldingPress = false
-            return
-        default:
-            super.sendEvent(event)
-        }
-    }
-
     // MARK: - Paste
 
     /// Hands over a pasted image, which waits in the note's quick-add. Reached when nothing in the note

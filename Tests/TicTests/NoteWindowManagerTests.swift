@@ -305,25 +305,3 @@ struct EdgeDockTests {
         Issue.record("timed out")
     }
 }
-
-@MainActor
-@Suite("Peek click shield")
-struct PeekClickShieldTests {
-    @Test("while shielded, a press only reports itself and its drag and release are swallowed too")
-    func shieldSwallowsPress() {
-        _ = NSApplication.shared
-        let panel = NotePanel(note: Note(), content: AnyView(Color.clear))
-        defer { panel.close() }
-        var shielded = 0
-        panel.onShieldedClick = { shielded += 1 }
-        panel.shieldClicksUntil = Date().addingTimeInterval(5)
-        func mouse(_ type: NSEvent.EventType) -> NSEvent {
-            NSEvent.mouseEvent(with: type, location: NSPoint(x: 10, y: 10), modifierFlags: [], timestamp: 0,
-                               windowNumber: panel.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
-        }
-        panel.sendEvent(mouse(.leftMouseDown))
-        panel.sendEvent(mouse(.leftMouseDragged))
-        panel.sendEvent(mouse(.leftMouseUp))
-        #expect(shielded == 1)
-    }
-}

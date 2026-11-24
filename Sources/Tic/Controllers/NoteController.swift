@@ -59,8 +59,6 @@ final class NoteController {
     var tabEdge: DockEdge = .right
     /// How tabs look (Settings › General › Docked tabs).
     var dockTabStyle: DockTabStyle = .titleCount
-    /// The pointer entered or left the note's window (a tab peeks on hover, a peek goes back on leave).
-    @ObservationIgnored var onPointerInside: ((Bool) -> Void)?
     /// A click on the tab: open it and keep it open.
     @ObservationIgnored var onTabClick: (() -> Void)?
     /// ⋯ › Dock to Edge / Undock.

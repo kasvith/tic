@@ -11,17 +11,16 @@ struct DockLayoutTests {
                                              visible: CGRect(x: 1440, y: 0, width: 2560, height: 1415))
     private var both: [DockLayout.Display] { [laptop, monitor] }
 
-    @Test("only outer edges dock: the seam between two displays doesn't")
-    func outerEdgesOnly() {
+    @Test("every display's left and right edges dock, the ones between two displays too")
+    func anyDisplayEdge() {
         #expect(DockLayout.edge(at: CGPoint(x: 3, y: 400), in: both)?.edge == .left)
         #expect(DockLayout.edge(at: CGPoint(x: 3999, y: 400), in: both)?.edge == .right)
-        #expect(DockLayout.edge(at: CGPoint(x: 1439, y: 400), in: both) == nil)   // laptop's right edge: seam
-        #expect(DockLayout.edge(at: CGPoint(x: 1441, y: 400), in: both) == nil)   // monitor's left edge: seam
-        // Above the laptop's top, the monitor's left edge has nothing beside it: an outer edge there.
-        #expect(DockLayout.edge(at: CGPoint(x: 1441, y: 1200), in: both)?.edge == .left)
+        let laptopRight = DockLayout.edge(at: CGPoint(x: 1439, y: 400), in: both)
+        #expect(laptopRight?.edge == .right && laptopRight?.display == laptop)
+        let monitorLeft = DockLayout.edge(at: CGPoint(x: 1441, y: 400), in: both)
+        #expect(monitorLeft?.edge == .left && monitorLeft?.display == monitor)
         #expect(DockLayout.edge(at: CGPoint(x: 700, y: 400), in: both) == nil)
-        // Alone, the laptop's right edge docks.
-        #expect(DockLayout.edge(at: CGPoint(x: 1439, y: 400), in: [laptop])?.edge == .right)
+        #expect(DockLayout.edge(at: CGPoint(x: 2800, y: 400), in: both) == nil)
     }
 
     @Test("a tab sits flush with its edge and inside the visible frame")

@@ -98,11 +98,8 @@ struct NoteView: View {
         .onGeometryChange(for: Bool.self) { $0.size.width <= DockLayout.maxTabWidth + 0.5 } action: {
             atTabWidth = $0
         }
-        // One tracking area for the tab and the note it peeks into, so growing from one to the other isn't a
-        // leave and an enter.
         .background(HoverArea { hovering in
             withAnimation(.easeInOut(duration: 0.15)) { revealed = hovering }
-            controller.onPointerInside?(hovering)
         })
         .ignoresSafeArea()
     }
