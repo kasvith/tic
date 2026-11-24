@@ -29,6 +29,10 @@ final class NotePanel: NSPanel {
         // The window is dragged only by its header (a WindowMoveArea), NOT the whole body —
         // otherwise starting a task-row drag would move the window instead of reordering.
         isMovableByWindowBackground = false
+        // Nor may macOS move it at all: only `performDrag` does, by setting the frame. A drag of macOS's own (from the
+        // hidden title-bar strip the header sits in) ran alongside ours, tiled the note at a screen edge and pulled it
+        // toward edges as ours followed the pointer, so it wiggled there. Code can still move a window that isn't movable.
+        isMovable = false
         hidesOnDeactivate = false            // stay visible when another app is focused
         isOpaque = false
         backgroundColor = .clear             // let the SwiftUI background (incl. glass) show through

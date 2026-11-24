@@ -264,10 +264,11 @@ panels**, and a few responsibilities are deliberately split across the AppKit/Sw
   for in-app controls and won't sample the desktop behind a window.
 - **The window drags only by its header.** `isMovableByWindowBackground` is off; `WindowMoveArea`
   (an `NSViewRepresentable` calling `window.performDrag`) is placed behind the header / collapsed
-  bar. This is what lets task rows be dragged to **reorder** without moving the window. The handle says
-  `mouseDownCanMoveWindow = false`: macOS drags a window itself from any see-through view in the hidden title-bar
-  strip (the header's top 32pt), and that drag is the one that tiles a window let go at a screen edge, so it fought
-  the edge dock. The title is
+  bar. This is what lets task rows be dragged to **reorder** without moving the window. The panel is
+  `isMovable = false`, so macOS never drags a note itself (code still moves it): its drag from the hidden title-bar
+  strip the header sits in ran alongside `performDrag`, tiled the note at a screen edge, and pulled it toward edges
+  while ours followed the pointer, so notes wiggled near edges. (A handle with `mouseDownCanMoveWindow = false` alone
+  wasn't enough.) The title is
   plain text **inside** that handle, not a click target: the header row sits in the window's hidden
   title-bar strip, where a title taking clicks let a double-click through to macOS's zoom. Renaming is
   ⋯ › Rename… (or a new list), via `NoteController.requestRename`, which swaps in a field.
