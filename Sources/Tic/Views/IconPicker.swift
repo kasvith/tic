@@ -14,25 +14,30 @@ struct NoteIconView: View {
     }
 }
 
-/// What ⋯ › Icon opens: Emoji / Symbols tabs over a grid of picks, then **All emoji…** (the macOS Character
-/// Viewer, typed into the note's `EmojiCatcher`) and, while the list has an icon, **Remove**.
+/// What ⋯ › Icon opens: Emoji / Symbols tabs over a grid of picks (emoji you've picked lately first), then
+/// **All emoji…** (the macOS Character Viewer, typed into the note's `EmojiCatcher`) and, while the list has an
+/// icon, **Remove**.
 struct IconPicker: View {
     let current: NoteIcon?
+    /// Emoji picked lately, in any list (`NoteIcon.recentEmoji`).
+    let recent: String
     let onPick: (NoteIcon?) -> Void
     let onAllEmoji: () -> Void
 
     private enum Tab { case emoji, symbols }
     @State private var tab: Tab
 
-    init(current: NoteIcon?, onPick: @escaping (NoteIcon?) -> Void, onAllEmoji: @escaping () -> Void) {
+    init(current: NoteIcon?, recent: String, onPick: @escaping (NoteIcon?) -> Void,
+         onAllEmoji: @escaping () -> Void) {
         self.current = current
+        self.recent = recent
         self.onPick = onPick
         self.onAllEmoji = onAllEmoji
         if case .symbol = current { _tab = State(initialValue: .symbols) } else { _tab = State(initialValue: .emoji) }
     }
 
     private var items: [NoteIcon] {
-        tab == .emoji ? NoteIcon.pickerEmoji.map(NoteIcon.emoji) : NoteIcon.symbols.map(NoteIcon.symbol)
+        tab == .emoji ? NoteIcon.emojiGrid(recent: recent).map(NoteIcon.emoji) : NoteIcon.symbols.map(NoteIcon.symbol)
     }
 
     var body: some View {
@@ -80,8 +85,9 @@ struct IconPicker: View {
 }
 
 /// An invisible one-character field in the note that takes what the Character Viewer types: All emoji… makes
-/// it first responder (in the note, not the popover, which closes once the viewer is clicked), and the first
-/// emoji typed into it becomes the icon.
+/// it first responder, and the first emoji typed into it becomes the icon. It's in the note, not the ⋯ menu,
+/// because the viewer types into the window that has the keyboard, and that has to be the note, so the menu
+/// steps aside while the viewer is up and comes back once an emoji arrives (`NoteHeaderView`).
 struct EmojiCatcher: NSViewRepresentable {
     @Binding var isActive: Bool
     let onEmoji: (String) -> Void

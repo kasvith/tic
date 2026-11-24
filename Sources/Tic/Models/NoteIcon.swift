@@ -40,6 +40,19 @@ enum NoteIcon: Equatable, Hashable, Sendable {
         }
     }
 
+    /// Emoji you've picked lately, newest first: one string of emoji (each a single `Character`), as the
+    /// `recentEmoji` default keeps it for every list's picker. `emoji` moves to the front.
+    static func recentEmoji(_ recent: String, adding emoji: String, limit: Int = 12) -> String {
+        guard emoji.count == 1, let pick = emoji.first else { return recent }
+        return String(([pick] + recent.filter { $0 != pick }).prefix(limit))
+    }
+
+    /// The Emoji grid: what you've picked lately first, then the common picks, as many as `pickerEmoji` in all.
+    static func emojiGrid(recent: String) -> [String] {
+        var seen = Set<String>()
+        return Array((recent.map(String.init) + pickerEmoji).filter { seen.insert($0).inserted }.prefix(pickerEmoji.count))
+    }
+
     /// The first character of `text` when it's an emoji (what the Character Viewer types), else nil. A plain
     /// digit or "#" is an emoji scalar too, so a lone scalar counts only with emoji presentation; keycaps,
     /// flags, skin tones and ZWJ sequences carry more than one scalar.

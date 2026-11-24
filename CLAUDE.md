@@ -190,8 +190,9 @@ panels**, and a few responsibilities are deliberately split across the AppKit/Sw
 - **List icons (`NoteIcon`, pure)** — `note.icon` holds one emoji or `symbol:<name>` from a fixed set of
   SF Symbols every macOS 14 has (so any Mac draws what another picked; anything else reads as no icon).
   Emoji draw in colour, symbols in the note's title ink (`NoteIconView`). ⋯ › Icon is one row opening
-  `IconPicker` (Emoji / Symbols tabs, All emoji…, Remove). All emoji… types into `EmojiCatcher`, an invisible
-  field in the **note** (not the popover, which closes once the Character Viewer is clicked).
+  `IconPicker` (Emoji / Symbols tabs, All emoji…, Remove). All emoji… types into `EmojiCatcher`, an invisible field in the **note**: the viewer types into the window that has
+  the keyboard, so ⋯ steps aside while it's up and reopens once an emoji arrives. Emoji you pick lead the Emoji grid in
+  every list's picker (`NoteIcon.recentEmoji`, kept in the `recentEmoji` default as one string of emoji).
 - **Private lists** — `note.isPrivate` (⋯ › Private), or every list via Settings › General
   (`everyListPrivate`). A private list's panel and image window get `sharingType = .none`, which only
   capture paths that honour it respect (ScreenCaptureKit on macOS 15.4+ is reported not to), so menu bar ›

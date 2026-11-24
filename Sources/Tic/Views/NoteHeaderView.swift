@@ -22,6 +22,8 @@ struct NoteHeaderView: View {
     /// All emoji… is waiting for the Character Viewer to type an emoji into the note's `EmojiCatcher`.
     @State private var catchingEmoji = false
     @State private var showClearConfirm = false
+    /// Emoji picked lately, shared by every list's picker (`NoteIcon.recentEmoji`).
+    @AppStorage("recentEmoji") private var recentEmoji = ""
     /// Bumped to flash the sync mark (a cycle touched this list, or Sync Now was pressed).
     @State private var syncPulse = 0
     @State private var showsSyncMark = false
@@ -72,7 +74,11 @@ struct NoteHeaderView: View {
         // Docked, the note always peeks at full size, so there's no rolling up.
         .background(WindowMoveArea { if !controller.isDocked { controller.toggleCollapsed() } })
         .background(alignment: .leading) {
-            EmojiCatcher(isActive: $catchingEmoji) { controller.setIcon(.emoji($0)) }.frame(width: 1, height: 1)
+            EmojiCatcher(isActive: $catchingEmoji) { emoji in
+                pickIcon(.emoji(emoji))
+                showOptions = true   // back to the menu it was opened from, showing the new icon
+            }
+            .frame(width: 1, height: 1)
         }
         .help(isRolledUp ? "Drag to move · double-click to expand" : "")
         .task(id: controller.renameRequest) {   // also runs on appear, for a list that opens renaming
@@ -406,8 +412,8 @@ extension NoteHeaderView {
         }
         .buttonStyle(.plain)
         .popover(isPresented: $showIconPicker, arrowEdge: .trailing) {
-            IconPicker(current: NoteIcon(stored: note.icon)) { icon in
-                controller.setIcon(icon)
+            IconPicker(current: NoteIcon(stored: note.icon), recent: recentEmoji) { icon in
+                pickIcon(icon)
                 showIconPicker = false
             } onAllEmoji: {
                 showIconPicker = false
@@ -415,6 +421,11 @@ extension NoteHeaderView {
                 catchingEmoji = true
             }
         }
+    }
+
+    private func pickIcon(_ icon: NoteIcon?) {
+        controller.setIcon(icon)
+        if case .emoji(let emoji) = icon { recentEmoji = NoteIcon.recentEmoji(recentEmoji, adding: emoji) }
     }
 
     private var colorSwatches: some View {

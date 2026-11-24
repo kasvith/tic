@@ -17,6 +17,18 @@ struct NoteIconTests {
         #expect(NoteIcon(stored: nil) == nil)
     }
 
+    @Test("a picked emoji leads the recent ones, once, up to the limit; the grid shows them before the common picks")
+    func recentEmoji() {
+        var recent = ""
+        for emoji in ["🚀", "🛒", "🇯🇵", "🛒", "not one"] { recent = NoteIcon.recentEmoji(recent, adding: emoji) }
+        #expect(recent == "🛒🇯🇵🚀")   // newest first, no repeats, flags whole, text ignored
+        #expect(NoteIcon.recentEmoji("👍🏽🍎🍐", adding: "🍋", limit: 3) == "🍋👍🏽🍎")
+        let grid = NoteIcon.emojiGrid(recent: recent)
+        #expect(Array(grid.prefix(3)) == ["🛒", "🇯🇵", "🚀"])
+        #expect(grid.count == NoteIcon.pickerEmoji.count && Set(grid).count == grid.count)   // 🛒 isn't shown twice
+        #expect(NoteIcon.emojiGrid(recent: "") == NoteIcon.pickerEmoji)
+    }
+
     @Test("emoji(in:) takes a leading emoji, including flags, skin tones, ZWJ and keycaps, but not digits or #")
     func emojiDetection() {
         #expect(NoteIcon.emoji(in: "🛒") == "🛒")
