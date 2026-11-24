@@ -59,6 +59,12 @@ private struct GeneralSettings: View {
                     Text("Open Tic and its notes when you log in.")
                 }
             }
+            Section("Privacy") {
+                Toggle(isOn: Binding(get: { model.everyListPrivate }, set: { model.setEveryListPrivate($0) })) {
+                    Text("Treat every list as private")
+                    Text("Keep every list out of screen shares where macOS allows, and cover it with Cover Private Lists.")
+                }
+            }
             Section("About") {
                 LabeledContent("Version", value: updates.currentVersion ?? "Development build")
                 Picker("Check for updates", selection: Binding(
@@ -80,7 +86,7 @@ private struct GeneralSettings: View {
             }
         }
         .formStyle(.grouped)
-        .frame(height: 270)
+        .frame(height: 350)
     }
 
     private var updateStatus: String {

@@ -25,6 +25,11 @@ final class NoteWindowManager: NSObject, NSWindowDelegate {
     /// The note whose image the image window is showing, so closing that note closes it too.
     private var imageWindowNoteID: UUID?
 
+    /// Settings › Treat every list as private.
+    var everyListPrivate = false { didSet { applyPrivacyToAll() } }
+    /// Private lists are covered while the screen is shared (menu bar › Cover Private Lists).
+    var coveringPrivate = false { didSet { applyPrivacyToAll() } }
+
     /// Notes let go of all Spaces while their display showed a full-screen app: hidden until it shows a desktop.
     private var parked: Set<UUID> = []
     /// Whether a display is showing an app's full-screen Space. Swapped in tests.
@@ -60,6 +65,20 @@ final class NoteWindowManager: NSObject, NSWindowDelegate {
             panel.orderOut(nil)
             parked.insert(panel.noteID)
         }
+    }
+
+    private func applyPrivacyToAll() {
+        for id in panels.keys { applyPrivacy(id) }
+    }
+
+    /// A private list's window is left out of screen captures that honour `sharingType` (older capture paths;
+    /// ScreenCaptureKit on macOS 15.4+ is reported not to), and drawn as a cover while `coveringPrivate`.
+    private func applyPrivacy(_ id: UUID) {
+        guard let panel = panels[id], let controller = controllers[id] else { return }
+        controller.everyListPrivate = everyListPrivate
+        controller.coveringPrivate = coveringPrivate
+        panel.sharingType = controller.isPrivate ? .none : .readOnly
+        if imageWindowNoteID == id { imageWindow?.sharingType = panel.sharingType }
     }
 
     /// The user moved to another Space: show each parked note whose display is on a desktop now.
@@ -128,6 +147,7 @@ final class NoteWindowManager: NSObject, NSWindowDelegate {
         controller.onNewNote = { [weak self] in
             Task { await self?.newNote() }
         }
+        controller.onPrivacyChange = { [weak self] in self?.applyPrivacy(note.id) }
         controller.onOpenImage = { [weak self, weak controller, weak panel] taskId in
             guard let self, let controller, let panel else { return }
             self.showImageWindow(controller: controller, taskId: taskId, from: panel)
@@ -139,6 +159,7 @@ final class NoteWindowManager: NSObject, NSWindowDelegate {
             if let panel { self?.snapToBottom(panel) }
         }
 
+        applyPrivacy(note.id)
         place(panel)
         if makeKey {
             panel.makeKeyAndOrderFront(nil)   // become key → the menu bar popover resigns/dismisses
@@ -281,6 +302,7 @@ final class NoteWindowManager: NSObject, NSWindowDelegate {
             rootView: ImageViewer(controller: controller, taskId: taskId) { [weak window] in window?.close() }
         )
         window.level = panel.level
+        window.sharingType = panel.sharingType   // a private list's picture stays out of shares too
         NSApp.activate()
         window.makeKeyAndOrderFront(nil)
     }

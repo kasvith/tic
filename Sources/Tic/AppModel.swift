@@ -57,6 +57,7 @@ final class AppModel {
 
     /// Run once after launch: open saved note panels, then start streaming the notes list.
     func bootstrap() async {
+        windows.everyListPrivate = everyListPrivate
         await windows.restoreAll()
         startObservingNotes()
         applyLaunchAtLogin(launchAtLogin)   // honor the saved preference (effective when packaged)
@@ -178,6 +179,28 @@ final class AppModel {
     func dismissUpdate() {
         updateWindow?.orderOut(nil)
         updates.clearFailure()
+    }
+
+    // MARK: - Privacy
+
+    private static let everyListPrivateKey = "everyListPrivate"
+
+    /// Settings › General › Treat every list as private: every list stays out of screen shares, as if each
+    /// had its own Private switch on.
+    private(set) var everyListPrivate: Bool = UserDefaults.standard.bool(forKey: AppModel.everyListPrivateKey)
+
+    func setEveryListPrivate(_ on: Bool) {
+        everyListPrivate = on
+        UserDefaults.standard.set(on, forKey: Self.everyListPrivateKey)
+        windows.everyListPrivate = on
+    }
+
+    /// Menu bar › Cover Private Lists: private lists show a plain cover, for this session.
+    private(set) var coveringPrivate = false
+
+    func setCoveringPrivate(_ on: Bool) {
+        coveringPrivate = on
+        windows.coveringPrivate = on
     }
 
     // MARK: - MCP (AI agents)

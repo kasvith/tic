@@ -14,7 +14,8 @@ import Foundation
 ///
 /// Bump `schemaVersion` when the format changes **or an enum gains a case** (`NoteColor`,
 /// `NoteMaterial`): a Mac that sees a newer schema skips that file and asks to be updated, instead
-/// of misreading values it doesn't know.
+/// of misreading values it doesn't know. A field added as an optional register (`SyncNote.icon`,
+/// `isPrivate`) needs no bump: files without it still read, and an older Mac just ignores it.
 struct SyncSnapshot: Codable, Equatable, Sendable {
     static let schemaVersion = 1
 
@@ -66,6 +67,9 @@ struct SyncNote: Codable, Equatable, Sendable {
     var moveCompletedToBottom: Register<Bool>
     /// Task order *and* nesting as one value, so two reorders never interleave into a jumble.
     var outline: Register<[OutlineEntry]>
+    /// Added later, so optional: absent in older files (nil icon, not private).
+    var icon: Register<String?>? = nil
+    var isPrivate: Register<Bool>? = nil
 }
 
 struct OutlineEntry: Codable, Equatable, Sendable {
@@ -110,6 +114,8 @@ struct SyncLocal: Equatable, Sendable {
         var moveCompletedToBottom: Bool
         var outline: [OutlineEntry]
         var isSynced: Bool
+        var icon: String? = nil
+        var isPrivate = false
     }
 
     struct TaskFields: Equatable, Sendable {

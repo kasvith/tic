@@ -57,7 +57,8 @@ extension AppDatabase {
     func observeSyncedChanges(_ onChange: @escaping @Sendable () -> Void) -> AnyDatabaseCancellable {
         DatabaseRegionObservation(tracking:
             Note.select(Column("title"), Column("color"), Column("material"),
-                        Column("hideCompleted"), Column("moveCompletedToBottom"), Column("isSynced")),
+                        Column("hideCompleted"), Column("moveCompletedToBottom"), Column("isSynced"),
+                        Column("icon"), Column("isPrivate")),
             TaskItem.all(),
             Table("taskImage").select(Column("hash"), Column("cropX"), Column("cropY"),
                                       Column("cropW"), Column("cropH"))
@@ -109,7 +110,7 @@ extension AppDatabase {
                 material: n.material.rawValue, hideCompleted: n.hideCompleted,
                 moveCompletedToBottom: n.moveCompletedToBottom,
                 outline: ordered.map { OutlineEntry(id: $0.id.uuidString, level: $0.indentLevel) },
-                isSynced: n.isSynced
+                isSynced: n.isSynced, icon: n.icon, isPrivate: n.isPrivate
             )
         }
         return out
@@ -139,7 +140,8 @@ extension AppDatabase {
                 id: id, title: n.title, createdAt: Date(syncMillis: n.createdAt), updatedAt: now,
                 color: NoteColor(rawValue: n.color) ?? .yellow, material: NoteMaterial(rawValue: n.material) ?? .solid,
                 isOpen: false, sortIndex: nextIndex,
-                hideCompleted: n.hideCompleted, moveCompletedToBottom: n.moveCompletedToBottom, isSynced: true
+                hideCompleted: n.hideCompleted, moveCompletedToBottom: n.moveCompletedToBottom, isSynced: true,
+                icon: n.icon, isPrivate: n.isPrivate
             ).insert(db)
         }
         for key in c.updatedNotes {
@@ -147,9 +149,10 @@ extension AppDatabase {
             try db.execute(
                 sql: """
                     UPDATE note SET title = ?, color = ?, material = ?, hideCompleted = ?,
-                    moveCompletedToBottom = ?, updatedAt = ? WHERE id = ?
+                    moveCompletedToBottom = ?, icon = ?, isPrivate = ?, updatedAt = ? WHERE id = ?
                     """,
-                arguments: [n.title, n.color, n.material, n.hideCompleted, n.moveCompletedToBottom, now, id]
+                arguments: [n.title, n.color, n.material, n.hideCompleted, n.moveCompletedToBottom,
+                            n.icon, n.isPrivate, now, id]
             )
         }
         for key in c.syncFlags {

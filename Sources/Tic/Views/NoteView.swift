@@ -96,8 +96,12 @@ struct NoteView: View {
             // Rolled up, the header's top row is all that's left: the window closes over the rest like a
             // shade, and the list leaves only once it's shut, so nothing moves and nothing hidden keeps focus.
             if !showsBar {
-                taskList
-                QuickAddBar(controller: controller, theme: theme)
+                if controller.isCovered {
+                    PrivateCover(theme: theme)
+                } else {
+                    taskList
+                    QuickAddBar(controller: controller, theme: theme)
+                }
             }
         }
         // `minHeight: 0`: part-way through a roll the window is shorter than the list's ~150pt minimum, and the
@@ -500,5 +504,25 @@ private struct AddSubtaskRow: View {
         }
         .help("Add a subtask")
         .transition(.opacity)
+    }
+}
+
+/// What a private list shows while it's covered: no tasks, just why.
+private struct PrivateCover: View {
+    let theme: NoteTheme
+
+    var body: some View {
+        VStack(spacing: 6) {
+            Image(systemName: "lock.fill").font(.title2)
+            Text("Covered while you share")
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(theme.title)
+            Text("Turn off Cover Private Lists in the menu bar to show it.")
+                .font(.caption)
+        }
+        .foregroundStyle(theme.secondary)
+        .multilineTextAlignment(.center)
+        .padding(16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

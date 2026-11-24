@@ -50,6 +50,31 @@ struct SyncTests {
         #expect(again == s)
     }
 
+    @Test("an icon and the Private switch travel, and a file written before they existed still reads")
+    func iconAndPrivateTravel() throws {
+        let home = basic("A")
+        var local = SyncMerge.resolve(home)
+        local.notes["N"]?.icon = "symbol:cart"
+        local.notes["N"]?.isPrivate = true
+        let edited = SyncMerge.record(local, into: home, now: 200)
+        #expect(edited.notes["N"]?.icon == Register(value: "symbol:cart", stamp: 200))
+        #expect(edited.notes["N"]?.title.stamp == 100)   // only the new fields were stamped
+
+        let work = SyncMerge.merge(basic("B"), edited)
+        #expect(SyncMerge.resolve(work).notes["N"]?.icon == "symbol:cart")
+        #expect(SyncMerge.resolve(work).notes["N"]?.isPrivate == true)
+
+        // An older Mac's file has neither field: it decodes, and merging it changes nothing.
+        var json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(basic("C"))) as! [String: Any]
+        var notes = json["notes"] as! [String: [String: Any]]
+        notes["N"]?["icon"] = nil
+        notes["N"]?["isPrivate"] = nil
+        json["notes"] = notes
+        let old = try JSONDecoder().decode(SyncSnapshot.self, from: JSONSerialization.data(withJSONObject: json))
+        #expect(old.notes["N"]?.icon == nil)
+        #expect(SyncMerge.resolve(SyncMerge.merge(work, old)).notes["N"]?.icon == "symbol:cart")
+    }
+
     @Test("record stamps only the field that changed")
     func recordOneField() {
         let s = basic()

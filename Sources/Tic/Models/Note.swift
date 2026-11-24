@@ -35,6 +35,11 @@ struct Note: Identifiable, Equatable, Codable, Sendable {
     /// from another Mac are synced). Per list, and itself synced: turning it off anywhere turns it off
     /// everywhere, and every Mac keeps its own copy.
     var isSynced: Bool
+    /// The list's icon (`NoteIcon.stored`: an emoji, or "symbol:<name>"); nil for none. Synced.
+    var icon: String?
+    /// Kept out of screen shares and recordings where macOS allows, and covered while sharing. Synced, since
+    /// a sensitive list is sensitive on every Mac.
+    var isPrivate: Bool
 
     init(
         id: UUID = UUID(),
@@ -54,7 +59,9 @@ struct Note: Identifiable, Equatable, Codable, Sendable {
         sortIndex: Int = 0,
         hideCompleted: Bool = false,
         moveCompletedToBottom: Bool = false,
-        isSynced: Bool = false
+        isSynced: Bool = false,
+        icon: String? = nil,
+        isPrivate: Bool = false
     ) {
         self.id = id
         self.title = title
@@ -74,6 +81,8 @@ struct Note: Identifiable, Equatable, Codable, Sendable {
         self.hideCompleted = hideCompleted
         self.moveCompletedToBottom = moveCompletedToBottom
         self.isSynced = isSynced
+        self.icon = icon
+        self.isPrivate = isPrivate
     }
 }
 

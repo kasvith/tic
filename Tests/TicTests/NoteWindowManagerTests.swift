@@ -213,3 +213,29 @@ struct UnpinOverFullScreenTests {
         #expect(panel.isVisible)
     }
 }
+
+@MainActor
+@Suite("Private lists")
+struct PrivateListTests {
+    @Test("a private list's window stays out of captures, and Settings can make every list private")
+    func sharingAndCover() async throws {
+        _ = NSApplication.shared
+        let db = try AppDatabase.makeInMemory()
+        let secret = Note(title: "Salary talk", isPrivate: true)
+        let open = Note(title: "Groceries")
+        try await db.insert(secret)
+        try await db.insert(open)
+        let manager = NoteWindowManager(appDatabase: db)
+        let secretPanel = manager.openNote(secret, makeKey: false)
+        let openPanel = manager.openNote(open, makeKey: false)
+        defer { secretPanel.close(); openPanel.close() }
+
+        #expect(secretPanel.sharingType == .none)
+        #expect(openPanel.sharingType == .readOnly)
+
+        manager.everyListPrivate = true
+        #expect(openPanel.sharingType == .none)
+        manager.everyListPrivate = false
+        #expect(openPanel.sharingType == .readOnly)
+    }
+}

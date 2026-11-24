@@ -40,6 +40,18 @@ final class NoteController {
     /// Asks the manager to show a task's image (by task id) in the image window.
     @ObservationIgnored var onOpenImage: ((UUID) -> Void)?
 
+    /// Asks the manager to re-apply the window's privacy (this list's Private switch changed).
+    @ObservationIgnored var onPrivacyChange: (() -> Void)?
+
+    /// Set by `NoteWindowManager`: Settings › Treat every list as private.
+    var everyListPrivate = false
+    /// Set by `NoteWindowManager`: private lists are covered while the screen is shared.
+    var coveringPrivate = false
+    /// This list stays out of screen shares (its own switch, or Settings for every list).
+    var isPrivate: Bool { everyListPrivate || note.isPrivate }
+    /// Drawn as a plain cover right now: no title, no icon, no tasks.
+    var isCovered: Bool { coveringPrivate && isPrivate }
+
     init(note: Note, database: AppDatabase) {
         self.noteID = note.id
         self.note = note
@@ -103,6 +115,9 @@ final class NoteController {
         }
         if old.isCollapsed != updated.isCollapsed {
             onSetCollapsed?(updated.isCollapsed)
+        }
+        if old.isPrivate != updated.isPrivate {
+            onPrivacyChange?()
         }
     }
 
@@ -428,6 +443,26 @@ extension NoteController {
                 showOnAllSpaces: showOnAllSpaces, isCollapsed: isCollapsed
             )
         }
+    }
+
+    // MARK: - Icon and privacy
+
+    /// ⋯ › Icon: an emoji or symbol before the title (nil removes it).
+    func setIcon(_ icon: NoteIcon?) {
+        let stored = icon?.stored
+        guard stored != note.icon else { return }
+        note.icon = stored
+        let id = noteID
+        Task { [db] in try? await db.updateNoteIcon(id: id, icon: stored) }
+    }
+
+    /// ⋯ › Private.
+    func togglePrivate() {
+        note.isPrivate.toggle()
+        let id = noteID
+        let isPrivate = note.isPrivate
+        onPrivacyChange?()
+        Task { [db] in try? await db.updateNotePrivate(id: id, isPrivate: isPrivate) }
     }
 
     /// ⋯ › Over full-screen apps: a pinned note also stays on every desktop and above full-screen apps. Kept

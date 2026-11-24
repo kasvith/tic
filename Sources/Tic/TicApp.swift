@@ -119,6 +119,11 @@ private struct MenuBarContent: View {
 
         Button("Search Lists…") { model.openSearch() }
 
+        // For a share where macOS still captures private lists (ScreenCaptureKit, macOS 15.4+).
+        Toggle("Cover Private Lists", isOn: Binding(
+            get: { model.coveringPrivate }, set: { model.setCoveringPrivate($0) }
+        ))
+
         SettingsMenuItem()
 
         if let title = model.updates.menuTitle {

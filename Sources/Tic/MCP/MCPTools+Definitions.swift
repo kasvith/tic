@@ -32,11 +32,13 @@ extension MCPTools {
                     "float_on_top": prop("boolean", "Keep the note above other windows"),
                     "show_on_all_spaces": prop("boolean", "With float_on_top, also show the note on every desktop and over full-screen apps"),
                     "collapsed": prop("boolean", "Start rolled up to just the title bar"),
+                    "icon": prop("string", "An emoji, or symbol:<name> drawn in the note's ink (\(NoteIcon.symbols.joined(separator: ", "))); an empty string removes it"),
+                    "private": prop("boolean", "Keep the note out of screen shares where macOS allows, and cover it while the user shares"),
                     "focus": prop("boolean", "Bring Tic to the front and focus the new note (default just surfaces it without stealing focus)"),
                  ])),
 
             Tool(name: "update_note",
-                 description: "Change a note's title, colour, material, window flags, or completed-task display, and bring it forward (open) or hide it. Only fields you pass change.",
+                 description: "Change a note's title, colour, material, icon, privacy, window flags, or completed-task display, and bring it forward (open) or hide it. Only fields you pass change.",
                  inputSchema: object([
                     "note_id": prop("string", "The note's id"),
                     "title": prop("string", "New title"),
@@ -45,6 +47,8 @@ extension MCPTools {
                     "float_on_top": prop("boolean", "Keep above other windows"),
                     "show_on_all_spaces": prop("boolean", "With float_on_top, also show on every desktop and over full-screen apps"),
                     "collapsed": prop("boolean", "Roll up to the title bar"),
+                    "icon": prop("string", "An emoji, or symbol:<name> drawn in the note's ink (\(NoteIcon.symbols.joined(separator: ", "))); an empty string removes it"),
+                    "private": prop("boolean", "Keep the note out of screen shares where macOS allows, and cover it while the user shares"),
                     "hide_completed": prop("boolean", "Hide checked-off tasks"),
                     "move_completed_to_bottom": prop("boolean", "Sink checked tasks to the bottom"),
                     "open": prop("boolean", "true surfaces the note (above other apps), false hides it"),

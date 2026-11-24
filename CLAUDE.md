@@ -149,7 +149,18 @@ panels**, and a few responsibilities are deliberately split across the AppKit/Sw
   DB and its device id in the `syncDeviceID` default (issued once, so a lost state file never leaves a
   ghost Mac in the folder), refuses to recreate a folder whose parent vanished (an unmounted Dropbox reads as "can't
   reach"), and skips files with a newer `schema` — bump it when the format changes **or `NoteColor` /
-  `NoteMaterial` gains a case**. Off by default (`syncEnabled` default).
+  `NoteMaterial` gains a case**. A field added as an *optional* register (`SyncNote.icon`, `isPrivate`)
+  needs no bump: older files still decode and older Macs ignore it. Off by default (`syncEnabled` default).
+- **List icons (`NoteIcon`, pure)** — `note.icon` holds one emoji or `symbol:<name>` from a fixed set of
+  SF Symbols every macOS 14 has (so any Mac draws what another picked; anything else reads as no icon).
+  Emoji draw in colour, symbols in the note's title ink (`NoteIconView`). ⋯ › Icon is one row opening
+  `IconPicker` (Emoji / Symbols tabs, All emoji…, Remove). All emoji… types into `EmojiCatcher`, an invisible
+  field in the **note** (not the popover, which closes once the Character Viewer is clicked).
+- **Private lists** — `note.isPrivate` (⋯ › Private), or every list via Settings › General
+  (`everyListPrivate`). A private list's panel and image window get `sharingType = .none`, which only
+  capture paths that honour it respect (ScreenCaptureKit on macOS 15.4+ is reported not to), so menu bar ›
+  Cover Private Lists (`coveringPrivate`) draws a plain cover instead (`NoteController.isCovered`). The
+  manager pushes both flags into each controller (`applyPrivacy`). A dim lock after the title marks one.
 - **Settings window (`SettingsView`)** — a SwiftUI `Settings` scene (⌘, and Tic › Settings… come
   free) with three `Form(.grouped)` tabs: General (Launch at Login, version, update frequency + Check
   Now), Sync (switch, folder, other Macs, and a switch per list), AI Agents (the MCP switch and

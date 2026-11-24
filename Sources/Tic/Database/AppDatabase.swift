@@ -139,6 +139,13 @@ final class AppDatabase: Sendable {
                 """)
         }
 
+        migrator.registerMigration("v7_note_icon_private") { db in
+            try db.alter(table: "note") { t in
+                t.add(column: "icon", .text)
+                t.add(column: "isPrivate", .boolean).notNull().defaults(to: false)
+            }
+        }
+
         return migrator
     }
 
@@ -254,6 +261,21 @@ final class AppDatabase: Sendable {
     func updateNoteSynced(id: UUID, isSynced: Bool) async throws {
         try await dbQueue.write { db in
             try db.execute(sql: "UPDATE note SET isSynced = ? WHERE id = ?", arguments: [isSynced, id])
+        }
+    }
+
+    /// Targeted write of a note's icon (`NoteIcon.stored`, nil for none).
+    func updateNoteIcon(id: UUID, icon: String?) async throws {
+        try await dbQueue.write { db in
+            try db.execute(sql: "UPDATE note SET icon = ?, updatedAt = ? WHERE id = ?", arguments: [icon, Date(), id])
+        }
+    }
+
+    /// Targeted write of whether a list is private (kept out of screen shares).
+    func updateNotePrivate(id: UUID, isPrivate: Bool) async throws {
+        try await dbQueue.write { db in
+            try db.execute(sql: "UPDATE note SET isPrivate = ?, updatedAt = ? WHERE id = ?",
+                           arguments: [isPrivate, Date(), id])
         }
     }
 

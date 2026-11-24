@@ -86,7 +86,9 @@ struct MCPTools: Sendable {
             material: try args.string("material").map(material) ?? .solid,
             floatOnTop: args.bool("float_on_top") ?? false,
             showOnAllSpaces: args.bool("show_on_all_spaces") ?? false,
-            isCollapsed: args.bool("collapsed") ?? false
+            isCollapsed: args.bool("collapsed") ?? false,
+            icon: try args.string("icon").flatMap(noteIcon)?.stored,
+            isPrivate: args.bool("private") ?? false
         ))
 
         if let frame = args.frame() {
@@ -129,6 +131,14 @@ struct MCPTools: Sendable {
         let collapsed = args.bool("collapsed") ?? current.isCollapsed
         if float != current.floatOnTop || allSpaces != current.showOnAllSpaces || collapsed != current.isCollapsed {
             try await database.updateNoteFlags(id: id, floatOnTop: float, showOnAllSpaces: allSpaces, isCollapsed: collapsed)
+        }
+
+        if let raw = args.string("icon") {
+            let icon = try noteIcon(raw)?.stored
+            if icon != current.icon { try await database.updateNoteIcon(id: id, icon: icon) }
+        }
+        if let isPrivate = args.bool("private"), isPrivate != current.isPrivate {
+            try await database.updateNotePrivate(id: id, isPrivate: isPrivate)
         }
 
         let hide = args.bool("hide_completed") ?? current.hideCompleted
@@ -342,6 +352,15 @@ struct MCPTools: Sendable {
         return c
     }
 
+    /// An emoji or "symbol:<name>"; an empty string means no icon.
+    private func noteIcon(_ raw: String) throws -> NoteIcon? {
+        let raw = raw.trimmed
+        if raw.isEmpty { return nil }
+        if let icon = NoteIcon(stored: raw) { return icon }
+        throw ToolError("Unknown icon '\(raw)'. Give one emoji, or symbol:<name> with a name from: "
+            + NoteIcon.symbols.joined(separator: ", ") + ". An empty string removes the icon.")
+    }
+
     private func material(_ raw: String) throws -> NoteMaterial {
         guard let m = NoteMaterial(rawValue: raw.lowercased()) else {
             throw ToolError("Unknown material '\(raw)'. Options: solid, glass")
@@ -361,6 +380,8 @@ struct MCPTools: Sendable {
             "collapsed": .bool(n.isCollapsed),
             "hide_completed": .bool(n.hideCompleted),
             "move_completed_to_bottom": .bool(n.moveCompletedToBottom),
+            "icon": n.icon.map(Value.string) ?? .null,
+            "private": .bool(n.isPrivate),
             "frame": frameValue(CGRect(x: n.frameX, y: n.frameY, width: n.frameW, height: n.frameH)),
         ]
         if let tasks {
