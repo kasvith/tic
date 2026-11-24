@@ -30,6 +30,10 @@ struct WindowMoveArea: NSViewRepresentable {
         @available(*, unavailable)
         required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
+        /// macOS drags a window itself from any see-through view in its title-bar strip (the header sits there), and that
+        /// drag is the one that tiles a window at a screen edge, so it fought the dock. Only `performDrag` moves a note.
+        override var mouseDownCanMoveWindow: Bool { false }
+
         /// A press that hasn't moved yet. The window drag starts only once it does, so a click or a
         /// double-click (roll-up) never counts as a drag — a note snaps when one is let go.
         private var pendingPress: NSEvent?

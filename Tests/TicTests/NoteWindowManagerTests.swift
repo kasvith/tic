@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import SwiftUI
 import Testing
@@ -169,6 +170,22 @@ struct NotePanelBehaviorTests {
             #expect(panel.level == (pinned ? .floating : .normal))
             #expect(panel.collectionBehavior.contains(.canJoinAllSpaces) == joins)
             #expect(panel.collectionBehavior.contains(.fullScreenAuxiliary))
+        }
+    }
+
+    @Test("macOS can't take over a header drag (its own drag tiles a window at a screen edge, fighting the dock)")
+    func headerIsNotASystemDragRegion() async throws {
+        _ = NSApplication.shared
+        let db = try AppDatabase.makeInMemory()
+        let note = Note(title: "Groceries", frameX: 200, frameY: 200, frameW: 280, frameH: 360)
+        try await db.insert(note)
+        let controller = NoteController(note: note, database: db)
+        let panel = NotePanel(note: note, content: AnyView(NoteView(controller: controller, drag: ReorderDrag())))
+        panel.contentView?.layoutSubtreeIfNeeded()
+        let frameView = try #require(panel.contentView?.superview)
+        for y in [354.0, 345, 330] {   // the header, inside the hidden title bar's 32pt
+            let hit = try #require(frameView.hitTest(NSPoint(x: 140, y: y)))
+            #expect(hit is WindowMoveArea.MoveView && !hit.mouseDownCanMoveWindow)
         }
     }
 }
