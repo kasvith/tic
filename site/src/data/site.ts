@@ -116,11 +116,26 @@ export const mcpClients: { name: string; icon: string }[] = [
   { name: 'Windsurf', icon: 'wind' },
 ];
 
-export const features = [
+// `isNew` marks what arrived in the latest release (a New badge on the landing page).
+export const features: { id: string; title: string; body: string; isNew?: boolean; guide?: { href: string; label: string } }[] = [
   {
     id: 'float',
     title: 'Lists that stay where you put them',
     body: 'Each list is its own small window on the desktop. Keep it above everything, or double-click the title to roll it up. Tic remembers where every note sits.',
+  },
+  {
+    id: 'dock',
+    isNew: true,
+    title: 'Tuck lists into the edge of your screen',
+    body: 'Drag a list to the left or right edge of any display and it folds into a thin tab that stays above every window. Hover to see its name, click to open it, type a task and move on: it slides back by itself.',
+    guide: { href: '/guides/sticky-notes-screen-edge-mac/', label: 'Keep notes at the side of your screen' },
+  },
+  {
+    id: 'fullscreen',
+    isNew: true,
+    title: 'Pinned lists stay over full-screen apps',
+    body: 'Pin a list and switch on Over full-screen apps, and it stays in view over an app in full screen, from your slides to your code editor. Unpin it and it goes back to its desktop.',
+    guide: { href: '/guides/sticky-note-over-full-screen-app/', label: 'Keep a note on top of a full-screen app' },
   },
   {
     id: 'subtasks',
@@ -136,6 +151,13 @@ export const features = [
     id: 'images',
     title: 'Paste screenshots right into a task',
     body: 'Copy a screenshot or image and press ⌘V. It sits under the task it belongs to, or waits in Add a task… until you press Return, so you can caption it first. Crop it in place, or double-click to open it in its own window to zoom in or send it to Preview.',
+  },
+  {
+    id: 'icons',
+    isNew: true,
+    title: 'An emoji or a symbol for every list',
+    body: 'Give a list an emoji, or one of a dozen symbols drawn in the list’s own ink, and it sits before the title and on the list’s tab. Emoji you’ve used come first, and All emoji… opens the full macOS picker.',
+    guide: { href: '/guides/emoji-in-sticky-notes-mac/', label: 'Add emoji to sticky notes' },
   },
   {
     id: 'look',
@@ -156,6 +178,13 @@ export const features = [
     id: 'sync',
     title: 'The same lists on your other Mac',
     body: 'Turn on sync and choose which lists travel. Tic keeps them in step through a folder your Macs already share, such as iCloud Drive or Dropbox, with no account and no server. Each Mac still decides which lists are open and where they sit.',
+  },
+  {
+    id: 'share',
+    isNew: true,
+    title: 'Keep a list out of your screen share',
+    body: 'Mark a list Private and Tic asks macOS to leave it out of screenshots and shares. Some share tools don’t listen, so Cover Private Lists in the menu bar swaps every private list for a plain cover until you’re done.',
+    guide: { href: '/guides/hide-notes-when-screen-sharing-mac/', label: 'Hide notes when you share your screen' },
   },
   {
     id: 'private',
@@ -213,6 +242,26 @@ export const faqs = [
   {
     q: 'Does Tic sync between Macs?',
     a: 'Yes, for the lists you choose. Turn on Sync in Tic’s Settings, then pick which lists sync. Tic syncs through a folder your Macs already share: iCloud Drive by default, or a Dropbox, Google Drive, OneDrive or Syncthing folder. There is no account and no server. Each Mac still decides which lists are open and where they sit. There is no iPhone app. Sync is new and still experimental.',
+  },
+  {
+    q: 'Can a sticky note stay on top of a full-screen app on Mac?',
+    a: 'With Tic, yes. Click the pin on a list, then turn on Over full-screen apps in its ⋯ options, and the list stays in view over apps in full screen. Lists docked at the screen edge can do the same: Settings › General › Show tabs over full-screen apps.',
+    link: { href: '/guides/sticky-note-over-full-screen-app/', label: 'Keep a note on top of a full-screen app' },
+  },
+  {
+    q: 'How do I keep a list out of a screen share?',
+    a: 'Turn on Private in the list’s ⋯ options, or Treat every list as private in Settings. Tic asks macOS to leave private lists out of screenshots and shares, but some share tools ignore that, so before you share, choose Cover Private Lists in Tic’s menu bar menu: every private list shows a plain cover until you turn it off.',
+    link: { href: '/guides/hide-notes-when-screen-sharing-mac/', label: 'Hide notes when you share your screen' },
+  },
+  {
+    q: 'Can I tuck a list into the side of the screen?',
+    a: 'Yes. Drag a list by its header to the left or right edge of a display and it folds into a thin tab above every window. Hover to see its name, click to open it, and it slides back once you move away. To undock it, click the dock button in its header, or drag it away from the edge.',
+    link: { href: '/guides/sticky-notes-screen-edge-mac/', label: 'Keep notes at the side of your screen' },
+  },
+  {
+    q: 'Can I add an emoji to a list?',
+    a: 'Yes. Choose Icon in a list’s ⋯ options and pick an emoji, or one of a dozen symbols drawn in the list’s own colour. All emoji… opens the full macOS picker, and the icon shows before the title and on the list’s tab when it’s docked.',
+    link: { href: '/guides/emoji-in-sticky-notes-mac/', label: 'Add emoji to sticky notes' },
   },
   {
     q: 'Can Tic open when I log in?',

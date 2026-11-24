@@ -1,0 +1,58 @@
+---
+// The edge dock, hands-on: a docked list rests as a sliver at the desktop's right edge; hovering slides out its
+// tab, a click opens the list out of the edge, and it goes back on its own a second after the pointer leaves it,
+// with Esc, its →| button, or a click anywhere else, as in Tic.
+import Note, { type Task } from './Note.astro';
+
+const tasks: Task[] = [
+  { t: 'Oat milk' },
+  { t: 'Sourdough', done: true },
+  { t: 'Coffee beans' },
+  { t: 'Lemons ×3' },
+];
+const open = tasks.filter((task) => !task.done).length;
+---
+
+<div data-dock-demo class="demo-scene w-full">
+  <div class="dock-desk demo-scale">
+    <div class="dock-app" aria-hidden="true">
+      <div class="dock-app-bar"><i /><i /><i /><span class="ml-2">Inbox</span></div>
+      {Array.from({ length: 7 }, (_, i) => (
+        <div class="dock-app-row"><i /><i style={`width:${[82, 64, 90, 58, 76, 70, 86][i]}%`} /></div>
+      ))}
+    </div>
+    <button type="button" class="note dock-tab" data-color="yellow" aria-expanded="false" aria-controls="dock-note" aria-label="Groceries, docked at the edge: open it">
+      <span class="dock-tab-in"><span class="count">{open}</span><span>🛒</span><span class="dock-tab-title">Groceries</span></span>
+    </button>
+    <div class="dock-peek">
+      <Note id="dock-note" title="Groceries" icon="🛒" color="yellow" tasks={tasks} docked interactive width="18.5em" />
+    </div>
+  </div>
+</div>
+
+<script>
+  document.querySelectorAll<HTMLElement>('[data-dock-demo]').forEach((demo) => {
+    const tab = demo.querySelector<HTMLButtonElement>('.dock-tab')!;
+    const peek = demo.querySelector<HTMLElement>('.dock-peek')!;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const isOpen = () => demo.hasAttribute('data-open');
+    const set = (open: boolean) => {
+      clearTimeout(timer);
+      demo.toggleAttribute('data-open', open);
+      tab.setAttribute('aria-expanded', String(open));
+    };
+    tab.addEventListener('click', () => set(!isOpen()));
+    // Back on its own once the pointer has been off the list for a second (a mouse only: a tap "leaves" at once).
+    peek.addEventListener('pointerleave', (event) => {
+      if (event.pointerType !== 'mouse' || !isOpen()) return;
+      timer = setTimeout(() => set(false), 1000);
+    });
+    peek.addEventListener('pointerenter', () => clearTimeout(timer));
+    demo.addEventListener('click', (event) => {
+      const target = event.target as Element;
+      if (target.closest('[data-put-back]')) return set(false);
+      if (isOpen() && !target.closest('.dock-peek, .dock-tab')) set(false);   // a click elsewhere
+    });
+    demo.addEventListener('keydown', (event) => { if (event.key === 'Escape' && isOpen()) { set(false); tab.focus(); } });
+  });
+</script>
